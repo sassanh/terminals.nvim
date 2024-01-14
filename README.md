@@ -12,9 +12,15 @@ This is work in progress, the plugin is working and is serving me for years, but
 ## Default Keymaps
 
 `<d-1>` to open a terminal in the first position, `<d-2>` for the second, and so on.
+
 `<d-bs>` to toggle the terminal window.
+
 `<d-h>`/`<d-l>` to move left/right between terminals.
+
 `<d-s-l>`/`<d-s-h>` to move the terminal buffer to the left/right.
+
 `<d-i>` to disable any keybindings in the terminal buffer, you can exit it only with `<d-s-i>`.
+
 `<d-/>`/`<d-?>` to initiate a backward search in the terminal buffer.
+
 `<d-p>`/`<d-s-p>` to paste with `p` or `P` respectively in the terminal buffer.
