@@ -121,13 +121,6 @@ function M.leave_terminal()
     M.toggle_terminal()
   end, { buffer = true, silent = true })
   vim.keymap.set("t", "<d-/>", "<c-\\><c-n>?", { buffer = true })
-  vim.keymap.set("t", "<c-l>", function()
-    local scrollback = vim.opt_local.scrollback
-    vim.fn.feedkeys("a\\<c-l>\\<c-\\>\\<lt>c-n>a", "n")
-    vim.opt_local.scrollback = 1
-    vim.opt_local.scrollback = 2
-    vim.opt_local.scrollback = scrollback
-  end, { buffer = true, silent = true })
   vim.keymap.set("t", "`", "<c-\\><c-n>:nohlsearch<bar>pclose<cr>a`", { buffer = true, silent = true })
   vim.keymap.set("t", "<a-`>", "<c-\\><c-n>:nohlsearch<bar>pclose<cr>a", { buffer = true, silent = true })
   vim.keymap.set("t", "<a-[>", "<c-\\><c-n>", { buffer = true, silent = true })
@@ -294,9 +287,9 @@ end
 ---@param name string
 function M.terminal_window_closed(name)
   if
-    vim.startswith(name, "term://Terminal-")
-    and M.border_window ~= nil
-    and vim.api.nvim_win_is_valid(M.border_window)
+      vim.startswith(name, "term://Terminal-")
+      and M.border_window ~= nil
+      and vim.api.nvim_win_is_valid(M.border_window)
   then
     vim.api.nvim_win_close(M.border_window, false)
   end
