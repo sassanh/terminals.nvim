@@ -65,8 +65,9 @@ function M.move_terminal(direction)
 end
 
 function M.enter_terminal()
+  local config = require("terminals").config
   for char = 1, 126 do
-    vim.keymap.del("t", ("<d-char-%s>"):format(char), { buffer = true })
+    pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(char) })
     vim.keymap.set(
       "t",
       ("<d-char-%s>"):format(char),
@@ -74,57 +75,60 @@ function M.enter_terminal()
       { noremap = true, buffer = true }
     )
   end
-  vim.keymap.del("t", "<a-`>", { buffer = true })
-  vim.keymap.del("t", "<a-[>", { buffer = true })
-  vim.keymap.set("t", "<d-s-i>", function()
+  vim.keymap.set("t", ("<%s-s-i>"):format(config.keys.modifier), function()
     M.leave_terminal()
     vim.cmd.startinsert()
   end, { buffer = true })
 end
 
 function M.leave_terminal()
+  local config = require("terminals").config
+
   for char = 1, 126 do
     pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(char) })
   end
-  vim.keymap.set("t", "<d-j>", "<c-\\><c-n><d-j>", { buffer = true, silent = true, remap = true })
-  vim.keymap.set("t", "<d-k>", "<c-\\><c-n><d-k>", { buffer = true, silent = true, remap = true })
-  vim.keymap.set("t", "<d-d>", "<c-\\><c-n><d-d>", { buffer = true, silent = true, remap = true })
-  vim.keymap.set("t", "<d-u>", "<c-\\><c-n><d-u>", { buffer = true, silent = true, remap = true })
-  vim.keymap.set("t", "<d-i>", function()
+  for key, value in ipairs(config.preserved_keys) do
+    if type(key) == "string" then
+      vim.keymap.set("t", key, ("<c-\\><c-n>%s"):format(value), { buffer = true, silent = true })
+    else
+      vim.keymap.set("t", value, ("<c-\\><c-n>%s"):format(value), { buffer = true, silent = true })
+    end
+  end
+
+  vim.keymap.set("t", config.keys.focus, function()
     M.enter_terminal()
     vim.cmd.startinsert()
   end, { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-p>", "<c-\\><c-n>pa", { buffer = true })
-  vim.keymap.set("t", "<d-s-p>", "<c-\\><c-n>Pa", { buffer = true })
-  vim.keymap.set("t", "<d-h>", function()
+
+  vim.keymap.set("t", config.keys.paste, "<c-\\><c-n>pa", { buffer = true })
+  vim.keymap.set("t", config.keys.paste_in_place, "<c-\\><c-n>Pa", { buffer = true })
+
+  vim.keymap.set("t", config.keys.go_left, function()
     M.save_terminal_state(true)
     M.navigate(-1)
   end, { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-l>", function()
+  vim.keymap.set("t", config.keys.go_right, function()
     M.save_terminal_state(true)
     M.navigate(1)
   end, { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-s-h>", function()
+  vim.keymap.set("t", config.keys.move_left, function()
     M.move_terminal(-1)
   end, { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-s-l>", function()
+  vim.keymap.set("t", config.keys.move_right, function()
     M.move_terminal(1)
   end, { buffer = true, silent = true })
   for i = 0, 9 do
-    vim.keymap.set("t", ("<d-%s>"):format(i), function()
+    vim.keymap.set("t", ("<%s-%s>"):format(config.keys.modifier, i), function()
       M.save_terminal_state(true)
       M.activate_terminal({ id = i })
     end, { buffer = true, silent = true })
   end
-  vim.keymap.set("t", "<d-bs>", function()
+  vim.keymap.set("t", config.keys.toggle, function()
     M.save_terminal_state(true)
     M.toggle_terminal()
   end, { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-/>", "<c-\\><c-n>?", { buffer = true })
-  vim.keymap.set("t", "`", "<c-\\><c-n>:nohlsearch<bar>pclose<cr>a`", { buffer = true, silent = true })
-  vim.keymap.set("t", "<a-`>", "<c-\\><c-n>:nohlsearch<bar>pclose<cr>a", { buffer = true, silent = true })
-  vim.keymap.set("t", "<a-[>", "<c-\\><c-n>", { buffer = true, silent = true })
-  vim.keymap.set("t", "<d-[>", "<c-\\><c-n>", { buffer = true, silent = true })
+  vim.keymap.set("t", config.keys.toggle_reverse_search, "<c-\\><c-n>?", { buffer = true })
+  vim.keymap.set("t", config.keys.leave, "<c-\\><c-n>", { buffer = true, silent = true })
 end
 
 --- @param opts ActivateTerminalOptions|nil
@@ -193,6 +197,7 @@ function M.activate_terminal(opts)
   vim.api.nvim_set_option_value("number", false, { win = M.terminal_window })
   vim.api.nvim_set_option_value("relativenumber", false, { win = M.terminal_window })
   vim.api.nvim_set_option_value("signcolumn", "no", { win = M.terminal_window })
+  vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.terminal_window })
 
   if should_create then
     vim.cmd.terminal(args or "fish")
@@ -287,9 +292,9 @@ end
 ---@param name string
 function M.terminal_window_closed(name)
   if
-      vim.startswith(name, "term://Terminal-")
-      and M.border_window ~= nil
-      and vim.api.nvim_win_is_valid(M.border_window)
+    vim.startswith(name, "term://Terminal-")
+    and M.border_window ~= nil
+    and vim.api.nvim_win_is_valid(M.border_window)
   then
     vim.api.nvim_win_close(M.border_window, false)
   end
