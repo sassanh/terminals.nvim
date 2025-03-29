@@ -25,8 +25,6 @@ function M.navigate(direction)
     vim.cmd.tabnext()
   elseif direction == -1 then
     vim.cmd.tabprevious()
-    -- else
-    --   require 'cokeline/mappings'.by_step('focus', direction)
   end
 end
 
@@ -155,9 +153,10 @@ function M.activate_terminal(opts)
   local should_create = true
   local buffer
 
-  local height = vim.o.lines - 5
-  local width = vim.fn.float2nr(vim.o.columns - (vim.o.columns * 1 / 10))
-  local col = vim.fn.float2nr((vim.o.columns - width) / 2) + 2
+  local height = vim.o.lines - 1
+  local width = vim.fn.float2nr(vim.o.columns - math.max(((vim.o.columns - 105) * 3 / 10), 0))
+  local col = vim.fn.float2nr((vim.o.columns - width) / 2)
+  local margin = vim.o.columns > 102
 
   if args == nil then
     local bufnr = vim.fn.bufnr(buffer_name)
@@ -178,36 +177,7 @@ function M.activate_terminal(opts)
 
   local win_opts = {
     relative = "editor",
-    row = 6,
-    col = col + 1,
-    width = width - 2,
-    height = height - 4,
-  }
-
-  if args == nil then
-    if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-      vim.api.nvim_set_current_win(M.terminal_window)
-      vim.api.nvim_set_current_buf(buffer)
-    else
-      M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
-    end
-  else
-    M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
-  end
-  vim.api.nvim_set_option_value("number", false, { win = M.terminal_window })
-  vim.api.nvim_set_option_value("relativenumber", false, { win = M.terminal_window })
-  vim.api.nvim_set_option_value("signcolumn", "no", { win = M.terminal_window })
-  vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.terminal_window })
-
-  if should_create then
-    vim.cmd.terminal(args or "fish")
-    vim.api.nvim_buf_set_name(buffer, buffer_name)
-    M.terminal_state[buffer] = true
-  end
-
-  win_opts = {
-    relative = "editor",
-    row = 3,
+    row = 0,
     col = col,
     width = width,
     height = height,
@@ -236,30 +206,82 @@ function M.activate_terminal(opts)
     header2 = header2 .. (i < 10 and "│" or "├")
     header3 = header3 .. (i < 10 and "┴" or "╯")
   end
-  local l1 = (width - 2 - vim.fn.strcharlen(header1)) / 2
-  local l2 = (width - 2 - vim.fn.strcharlen(header1)) / 2 + ((width - 2 - vim.fn.strcharlen(header1)) % 2)
-  vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
-  vim.api.nvim_buf_set_lines(
-    border_buffer,
-    -1,
-    -1,
-    true,
-    { "╭" .. ("─"):rep(l1) .. header2 .. ("─"):rep(l2) .. "╮" }
-  )
-  vim.api.nvim_buf_set_lines(
-    border_buffer,
-    -1,
-    -1,
-    true,
-    { "│" .. (" "):rep(l1) .. header3 .. (" "):rep(l2) .. "│" }
-  )
-  for _ = 1, height - 4 do
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "│" .. (" "):rep(width - 2) .. "│" })
+  if vim.fn.strcharlen(header1) > width - (margin and 2 or 0) then
+    if id <= 5 and id ~= 0 then
+      header1 = vim.fn.strcharpart(header1, 0, width - 1 - (margin and 4 or 0)) .. "─"
+      header2 = vim.fn.strcharpart(header2, 0, width - 1 - (margin and 4 or 0)) .. " "
+      header3 = vim.fn.strcharpart(header3, 0, width - 1 - (margin and 4 or 0)) .. "─"
+    else
+      local length = vim.fn.strcharlen(header1)
+      header1 = "─" .. vim.fn.strcharpart(header1, length - width + 1 + (margin and 4 or 0), length)
+      header2 = " " .. vim.fn.strcharpart(header2, length - width + 1 + (margin and 4 or 0), length)
+      header3 = "─" .. vim.fn.strcharpart(header3, length - width + 1 + (margin and 4 or 0), length)
+    end
   end
-  vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "╰" .. ("─"):rep(width - 2) .. "╯" })
+  local l1 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
+  local l2 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
+      + ((width - 2 - vim.fn.strcharlen(header1)) % 2)
+  if margin then
+    vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
+    vim.api.nvim_buf_set_lines(
+      border_buffer,
+      -1,
+      -1,
+      true,
+      { "╭" .. ("─"):rep(l1) .. header2 .. ("─"):rep(l2) .. "╮" }
+    )
+    vim.api.nvim_buf_set_lines(
+      border_buffer,
+      -1,
+      -1,
+      true,
+      { "│" .. (" "):rep(l1) .. header3 .. (" "):rep(l2) .. "│" }
+    )
+    for _ = 1, height - 4 do
+      vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "│" .. (" "):rep(width - 2) .. "│" })
+    end
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "╰" .. ("─"):rep(width - 2) .. "╯" })
+  else
+    vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1) .. header1 .. (" "):rep(l2) })
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { ("─"):rep(l1) .. header2 .. ("─"):rep(l2) })
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { (" "):rep(l1) .. header3 .. (" "):rep(l2) })
+    for _ = 1, height - 4 do
+      vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { " " })
+    end
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { ("─"):rep(width) })
+  end
+
+  win_opts = {
+    relative = "editor",
+    row = 3,
+    col = col + (margin and 1 or 0),
+    width = width - (margin and 2 or 0),
+    height = height - 4,
+  }
+
+  if args == nil then
+    if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
+      vim.api.nvim_set_current_win(M.terminal_window)
+      vim.api.nvim_set_current_buf(buffer)
+    else
+      M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
+    end
+  else
+    M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
+  end
+  vim.api.nvim_set_option_value("number", false, { win = M.terminal_window })
+  vim.api.nvim_set_option_value("relativenumber", false, { win = M.terminal_window })
+  vim.api.nvim_set_option_value("signcolumn", "no", { win = M.terminal_window })
+  vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.terminal_window })
+
+  if should_create then
+    vim.cmd.terminal(args or "fish")
+    vim.api.nvim_buf_set_name(buffer, buffer_name)
+    M.terminal_state[buffer] = true
+  end
 
   vim.api.nvim_set_current_win(M.terminal_window)
-  if M.terminal_state[buffer] or false then
+  if M.terminal_state[buffer] then
     if append_mode then
       vim.cmd.startinsert()
     else
