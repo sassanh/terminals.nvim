@@ -181,6 +181,7 @@ function M.activate_terminal(opts)
     col = col,
     width = width,
     height = height,
+    border = "none",
   }
   local border_buffer
   if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
@@ -257,6 +258,7 @@ function M.activate_terminal(opts)
     col = col + (margin and 1 or 0),
     width = width - (margin and 2 or 0),
     height = height - 4,
+    border = "",
   }
 
   if args == nil then
@@ -313,12 +315,13 @@ end
 
 ---@param name string
 function M.terminal_window_closed(name)
-  if
-    vim.startswith(name, "term://Terminal-")
-    and M.border_window ~= nil
-    and vim.api.nvim_win_is_valid(M.border_window)
-  then
-    vim.api.nvim_win_close(M.border_window, false)
+  if vim.startswith(name, "term://Terminal-") then
+    if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
+      vim.api.nvim_win_close(M.terminal_window, false)
+      if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
+        vim.api.nvim_win_close(M.border_window, false)
+      end
+    end
   end
 end
 
