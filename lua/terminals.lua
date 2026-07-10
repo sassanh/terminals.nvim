@@ -18,6 +18,7 @@ local logic = require("terminals.logic")
 ---@class TerminalsConfig
 ---@field keys Keymap
 ---@field preserved_keys string[]
+---@field shell? string
 local config = {
   keys = {
     go_left = "<d-h>",

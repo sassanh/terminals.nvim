@@ -113,4 +113,10 @@ Options:
 - `append_mode` — start in insert mode (default: `true`)
 - `args` — shell command to run when creating a new terminal
 
-New terminals default to `fish` when no `args` are provided.
+New terminals use your default shell unless `args` is passed or `shell` is set in `setup()`.
+
+```lua
+require("terminals").setup({
+  shell = "/bin/bash",
+})
+```

@@ -1,16 +1,15 @@
 TESTS_INIT=tests/minimal_init.lua
 TESTS_DIR=tests/
-PLENARY_DIR?=vendor/plenary.nvim
 
 .PHONY: test deps
 
 deps:
-	@if [ ! -d "$(PLENARY_DIR)/.git" ]; then \
-		git clone --depth 1 https://github.com/nvim-lua/plenary.nvim "$(PLENARY_DIR)"; \
+	@if [ ! -d vendor/plenary.nvim/.git ]; then \
+		git clone --depth 1 https://github.com/nvim-lua/plenary.nvim vendor/plenary.nvim; \
 	fi
 
 test: deps
-	@PLENARY_DIR="$(CURDIR)/$(PLENARY_DIR)" nvim \
+	@nvim \
 		--headless \
 		--noplugin \
 		-u ${TESTS_INIT} \

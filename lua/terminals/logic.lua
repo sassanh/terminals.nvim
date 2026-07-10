@@ -278,7 +278,14 @@ function M.activate_terminal(opts)
   vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.terminal_window })
 
   if should_create then
-    vim.cmd.terminal(creation_args or "fish")
+    local shell = require("terminals").config.shell
+    if creation_args then
+      vim.cmd.terminal(creation_args)
+    elseif shell then
+      vim.cmd.terminal(shell)
+    else
+      vim.cmd.terminal()
+    end
     buffer = vim.api.nvim_get_current_buf()
     vim.api.nvim_buf_set_name(buffer, buffer_name)
     M.terminal_state[buffer] = true
