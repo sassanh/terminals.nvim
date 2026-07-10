@@ -1,11 +1,12 @@
-*terminals.nvim.txt*       For Neovim >= 0.8.0      Last change: 2026 July 10
+*terminals.nvim.txt*
+                              For Neovim >= 0.8.0    Last change: 2026 July 10
 
 ==============================================================================
 Table of Contents                           *terminals.nvim-table-of-contents*
 
 1. terminals.nvim                              |terminals.nvim-terminals.nvim|
-  - Requirements                    |terminals.nvim-terminals.nvim-requirements|
-  - Installation                    |terminals.nvim-terminals.nvim-installation|
+  - Requirements                  |terminals.nvim-terminals.nvim-requirements|
+  - Installation                  |terminals.nvim-terminals.nvim-installation|
   - Setup                                |terminals.nvim-terminals.nvim-setup|
   - Default Keymaps            |terminals.nvim-terminals.nvim-default-keymaps|
   - Configuration                |terminals.nvim-terminals.nvim-configuration|
@@ -30,7 +31,8 @@ REQUIREMENTS                      *terminals.nvim-terminals.nvim-requirements*
 
 INSTALLATION                      *terminals.nvim-terminals.nvim-installation*
 
-lazy.nvim ~
+
+LAZY.NVIM ~
 
 >lua
     {
@@ -41,7 +43,8 @@ lazy.nvim ~
     }
 <
 
-packer.nvim ~
+
+PACKER.NVIM ~
 
 >lua
     use {
@@ -52,14 +55,15 @@ packer.nvim ~
     }
 <
 
-LuaRocks ~
+
+LUAROCKS ~
 
 >sh
     luarocks install terminals.nvim
 <
 
 
-SETUP                                  *terminals.nvim-terminals.nvim-setup*
+SETUP                                    *terminals.nvim-terminals.nvim-setup*
 
 Call `setup()` to register keymaps and autocmds:
 
@@ -70,16 +74,17 @@ Call `setup()` to register keymaps and autocmds:
 
 DEFAULT KEYMAPS                *terminals.nvim-terminals.nvim-default-keymaps*
 
-`<D-0>` … `<D-9>`    Open or switch to terminal slot 0–9
-`<D-BS>`             Toggle the terminal window
-`<D-h>` / `<D-l>`    Move left/right between terminals
-`<D-S-h>` / `<D-S-l>` Move the terminal buffer left/right
-`<D-i>`              Enter terminal input mode (all keys go to the shell)
-`<D-S-i>`            Leave terminal input mode
-`<D-[>`              Leave terminal mode
-`<D-/>` / `<D-?>`    Backward search in the terminal buffer
-`<D-p>` / `<D-S-p>`  Paste with `p` or `P` in the terminal buffer
-
+  Keymap              Action
+  ------------------- ------------------------------------------------------
+  <D-0> … <D-9>       Open or switch to terminal slot 0–9
+  <D-BS>              Toggle the terminal window
+  <D-h> / <D-l>       Move left/right between terminals
+  <D-S-h> / <D-S-l>   Move the terminal buffer left/right
+  <D-i>               Enter terminal input mode (all keys go to the shell)
+  <D-S-i>             Leave terminal input mode
+  <D-[>               Leave terminal mode
+  <D-/> / <D-?>       Backward search in the terminal buffer
+  <D-p> / <D-S-p>     Paste with p or P in the terminal buffer
 
 CONFIGURATION                    *terminals.nvim-terminals.nvim-configuration*
 
@@ -105,11 +110,11 @@ All keymaps are configurable:
     })
 <
 
-`modifier` is used to build the `<D-0>` … `<D-9>` slot keymaps. Set it to match
-your platform's super/meta modifier (for example `"D"` on macOS).
+`modifier` is used to build the `<D-0>` … `<D-9>` slot keymaps. Set it to
+match your platform’s super/meta modifier (for example `"D"` on macOS).
 
-`preserved_keys` lets you keep specific terminal-mode keymaps when leaving input
-mode.
+`preserved_keys` lets you keep specific terminal-mode keymaps when leaving
+input mode.
 
 
 COMMANDS                              *terminals.nvim-terminals.nvim-commands*
