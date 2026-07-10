@@ -2,13 +2,23 @@ name: "release"
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
+  pull_request:
+
 jobs:
   luarocks-upload:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
       - name: LuaRocks Upload
-        uses: nvim-neorocks/luarocks-tag-release@v4
+        uses: nvim-neorocks/luarocks-tag-release@v7
         env:
           LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        with:
+          summary: "Terminal manager plugin for Neovim"
+          detailed_description: |
+            A terminal manager for Neovim with up to 10 persistent terminal
+            slots, a tab-style header, and keyboard-driven navigation.
+          labels: |
+            neovim
+            plugin

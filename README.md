@@ -3,24 +3,110 @@
 ![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/sassanh/terminals.nvim/lint-test.yml?branch=main&style=for-the-badge)
 ![Lua](https://img.shields.io/badge/Made%20with%20Lua-blueviolet.svg?style=for-the-badge&logo=lua)
 
-A template repository for Neovim plugins.
+A terminal manager for Neovim with up to 10 persistent terminal slots, a tab-style header, and keyboard-driven navigation.
 
-## Status
+## Requirements
 
-This is work in progress, the plugin is working and is serving me for years, but it is not yet packaged as a configurable plugin, so while pro-users should be able to set it up for themselves by checking/modifying the keymaps in the code, it may be tricky for non-pro-users.
+- Neovim >= 0.8.0
+- macOS (default keymaps use the `<D-…>` Cmd modifier)
+
+## Installation
+
+### lazy.nvim
+
+```lua
+{
+  "sassanh/terminals.nvim",
+  config = function()
+    require("terminals").setup()
+  end,
+}
+```
+
+### packer.nvim
+
+```lua
+use {
+  "sassanh/terminals.nvim",
+  config = function()
+    require("terminals").setup()
+  end,
+}
+```
+
+### LuaRocks
+
+```sh
+luarocks install terminals.nvim
+```
+
+## Setup
+
+Call `setup()` to register keymaps and autocmds:
+
+```lua
+require("terminals").setup()
+```
 
 ## Default Keymaps
 
-`<d-1>` to open a terminal in the first position, `<d-2>` for the second, and so on.
+| Keymap | Action |
+| --- | --- |
+| `<D-0>` … `<D-9>` | Open or switch to terminal slot 0–9 |
+| `<D-BS>` | Toggle the terminal window |
+| `<D-h>` / `<D-l>` | Move left/right between terminals |
+| `<D-S-h>` / `<D-S-l>` | Move the terminal buffer left/right |
+| `<D-i>` | Enter terminal input mode (all keys go to the shell) |
+| `<D-S-i>` | Leave terminal input mode |
+| `<D-[>` | Leave terminal mode |
+| `<D-/>` / `<D-?>` | Backward search in the terminal buffer |
+| `<D-p>` / `<D-S-p>` | Paste with `p` or `P` in the terminal buffer |
 
-`<d-bs>` to toggle the terminal window.
+## Configuration
 
-`<d-h>`/`<d-l>` to move left/right between terminals.
+All keymaps are configurable:
 
-`<d-s-l>`/`<d-s-h>` to move the terminal buffer to the left/right.
+```lua
+require("terminals").setup({
+  keys = {
+    go_left = "<D-h>",
+    go_right = "<D-l>",
+    move_left = "<D-S-h>",
+    move_right = "<D-S-l>",
+    toggle = "<D-BS>",
+    toggle_reverse_search = "<D-/>",
+    focus = "<D-i>",
+    unfocus = "<D-S-i>",
+    leave = "<D-[>",
+    paste = "<D-p>",
+    paste_in_place = "<D-S-p>",
+    modifier = "D",
+  },
+  preserved_keys = {},
+})
+```
 
-`<d-i>` to disable any keybindings in the terminal buffer, you can exit it only with `<d-s-i>`.
+`modifier` is used to build the `<D-0>` … `<D-9>` slot keymaps. Set it to match your platform's super/meta modifier (for example `"D"` on macOS).
 
-`<d-/>`/`<d-?>` to initiate a backward search in the terminal buffer.
+`preserved_keys` lets you keep specific terminal-mode keymaps when leaving input mode.
 
-`<d-p>`/`<d-s-p>` to paste with `p` or `P` respectively in the terminal buffer.
+## Commands
+
+- `:Terminal [cmd]` — open a terminal, optionally running `cmd`
+- `:ToggleTerminal` — toggle the terminal window
+- `:CloseTerminal` — close the terminal window
+
+## API
+
+```lua
+require("terminals").activate_terminal({ id = 1 })
+```
+
+Options:
+
+- `id` — terminal slot (0–9)
+- `toggle` — toggle if already on the same slot (default: `true`)
+- `append_mode` — start in insert mode (default: `true`)
+- `args` — shell command to run when creating a new terminal
+
+New terminals default to `fish` when no `args` are provided.

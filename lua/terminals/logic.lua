@@ -221,7 +221,7 @@ function M.activate_terminal(opts)
   end
   local l1 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
   local l2 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
-      + ((width - 2 - vim.fn.strcharlen(header1)) % 2)
+    + ((width - 2 - vim.fn.strcharlen(header1)) % 2)
   if margin then
     vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
     vim.api.nvim_buf_set_lines(

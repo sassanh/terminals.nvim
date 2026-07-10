@@ -1,6 +1,11 @@
 terminals.nvim-links	terminals.nvim.txt	/*terminals.nvim-links*
 terminals.nvim-table-of-contents	terminals.nvim.txt	/*terminals.nvim-table-of-contents*
 terminals.nvim-terminals.nvim	terminals.nvim.txt	/*terminals.nvim-terminals.nvim*
+terminals.nvim-terminals.nvim-api	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-api*
+terminals.nvim-terminals.nvim-commands	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-commands*
+terminals.nvim-terminals.nvim-configuration	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-configuration*
 terminals.nvim-terminals.nvim-default-keymaps	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-default-keymaps*
-terminals.nvim-terminals.nvim-status	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-status*
+terminals.nvim-terminals.nvim-installation	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-installation*
+terminals.nvim-terminals.nvim-requirements	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-requirements*
+terminals.nvim-terminals.nvim-setup	terminals.nvim.txt	/*terminals.nvim-terminals.nvim-setup*
 terminals.nvim.txt	terminals.nvim.txt	/*terminals.nvim.txt*
