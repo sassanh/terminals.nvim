@@ -15,6 +15,7 @@ M.terminal_window = nil
 M.border_window = nil
 M.terminal_state = {}
 M.last_terminal = 1
+M.switching_terminals = false
 
 ---@param direction 1|-1
 function M.navigate(direction)
@@ -145,9 +146,9 @@ function M.activate_terminal(opts)
       end
     end
   end
-  local args = nil
+  local creation_args = nil
   if opts["args"] ~= "" and opts["args"] ~= nil then
-    args = opts["args"]
+    creation_args = opts["args"]
   end
   local buffer_name = "term://Terminal-" .. id
   local should_create = true
@@ -158,22 +159,17 @@ function M.activate_terminal(opts)
   local col = vim.fn.float2nr((vim.o.columns - width) / 2)
   local margin = vim.o.columns > 102
 
-  if args == nil then
-    local bufnr = vim.fn.bufnr(buffer_name)
-    if bufnr ~= -1 then
-      if vim.api.nvim_get_option_value("buftype", { buf = vim.fn.bufnr(buffer_name) }) == "terminal" then
-        should_create = false
-        buffer = vim.fn.bufnr(buffer_name)
-      else
-        vim.api.nvim_buf_delete(bufnr, { force = true })
-      end
+  local bufnr = vim.fn.bufnr(buffer_name)
+  if bufnr ~= -1 then
+    if vim.api.nvim_get_option_value("buftype", { buf = bufnr }) == "terminal" then
+      should_create = false
+      buffer = bufnr
+    else
+      vim.api.nvim_buf_delete(bufnr, { force = true })
     end
   end
 
-  if buffer == nil then
-    buffer = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_var(buffer, "signcolumn", "no")
-  end
+  M.switching_terminals = true
 
   local win_opts = {
     relative = "editor",
@@ -261,23 +257,29 @@ function M.activate_terminal(opts)
     border = "",
   }
 
-  if args == nil then
+  if should_create then
     if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
+      vim.api.nvim_win_set_config(M.terminal_window, win_opts)
       vim.api.nvim_set_current_win(M.terminal_window)
-      vim.api.nvim_set_current_buf(buffer)
     else
-      M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
+      M.terminal_window = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), true, win_opts)
     end
+  elseif M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
+    vim.api.nvim_win_set_config(M.terminal_window, win_opts)
+    vim.api.nvim_win_set_buf(M.terminal_window, buffer)
+    vim.api.nvim_set_current_win(M.terminal_window)
   else
     M.terminal_window = vim.api.nvim_open_win(buffer, true, win_opts)
   end
+
   vim.api.nvim_set_option_value("number", false, { win = M.terminal_window })
   vim.api.nvim_set_option_value("relativenumber", false, { win = M.terminal_window })
   vim.api.nvim_set_option_value("signcolumn", "no", { win = M.terminal_window })
   vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.terminal_window })
 
   if should_create then
-    vim.cmd.terminal(args or "fish")
+    vim.cmd.terminal(creation_args or "fish")
+    buffer = vim.api.nvim_get_current_buf()
     vim.api.nvim_buf_set_name(buffer, buffer_name)
     M.terminal_state[buffer] = true
   end
@@ -290,6 +292,8 @@ function M.activate_terminal(opts)
       M.toggle_terminal()
     end
   end
+
+  M.switching_terminals = false
 end
 
 function M.close_terminal()
@@ -315,6 +319,9 @@ end
 
 ---@param name string
 function M.terminal_window_closed(name)
+  if M.switching_terminals then
+    return
+  end
   if vim.startswith(name, "term://Terminal-") then
     if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
       vim.api.nvim_win_close(M.terminal_window, false)
