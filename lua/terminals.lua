@@ -7,6 +7,7 @@ local logic = require("terminals.logic")
 ---@field move_left string
 ---@field move_right string
 ---@field toggle string
+---@field cycle_layout string
 ---@field toggle_reverse_search string
 ---@field focus string
 ---@field unfocus string
@@ -14,6 +15,12 @@ local logic = require("terminals.logic")
 ---@field paste string
 ---@field paste_in_place string
 ---@field modifier string
+
+---@class WindowLayout
+---@field width? number|string
+---@field height? number|string
+---@field row? number|string
+---@field col? number|string
 
 ---@class TerminalsConfig
 ---@field keys Keymap
@@ -23,6 +30,7 @@ local logic = require("terminals.logic")
 ---@field height? number|string
 ---@field row? number|string
 ---@field col? number|string
+---@field layouts? WindowLayout[]
 local config = {
   keys = {
     go_left = "<d-h>",
@@ -30,6 +38,7 @@ local config = {
     move_left = "<d-s-h>",
     move_right = "<d-s-l>",
     toggle = "<d-bs>",
+    cycle_layout = "<d-m>",
     toggle_reverse_search = "<d-/>",
     focus = "<d-i>",
     unfocus = "<d-s-i>",
@@ -37,6 +46,10 @@ local config = {
     paste = "<d-p>",
     paste_in_place = "<d-s-p>",
     modifier = "d",
+  },
+  layouts = {
+    { width = "100%", height = "100%", row = 0, col = 0 },
+    { width = "40%", height = "50%", row = 0, col = "right" },
   },
   preserved_keys = {},
 }
@@ -100,6 +113,10 @@ M.setup = function(args)
   vim.keymap.set("n", M.config.keys.toggle, function()
     logic.save_terminal_state(false)
     logic.toggle_terminal()
+  end, { silent = true })
+
+  vim.keymap.set("n", M.config.keys.cycle_layout, function()
+    logic.cycle_layout()
   end, { silent = true })
 
   for i = 0, 9 do

@@ -30,12 +30,12 @@ A terminal manager for Neovim with up to 10 persistent terminal slots, a tab-sty
 ### packer.nvim
 
 ```lua
-use {
+use({
   "sassanh/terminals.nvim",
   config = function()
     require("terminals").setup()
   end,
-}
+})
 ```
 
 ### LuaRocks
@@ -58,6 +58,7 @@ require("terminals").setup()
 | --- | --- |
 | `<D-0>` … `<D-9>` | Open or switch to terminal slot 0–9 |
 | `<D-BS>` | Toggle the terminal window |
+| `<D-m>` | Cycle through configured window layouts |
 | `<D-h>` / `<D-l>` | Move left/right between terminals |
 | `<D-S-h>` / `<D-S-l>` | Move the terminal buffer left/right |
 | `<D-i>` | Enter terminal input mode (all keys go to the shell) |
@@ -80,6 +81,7 @@ require("terminals").setup({
     move_left = "<D-S-h>",
     move_right = "<D-S-l>",
     toggle = "<D-BS>",
+    cycle_layout = "<D-m>",
     toggle_reverse_search = "<D-/>",
     focus = "<D-i>",
     unfocus = "<D-S-i>",
@@ -123,6 +125,24 @@ For `row` and `col`, you can also use alignment keywords:
 - `"right"` — align to the right (`col` only)
 
 Computed dimensions are clamped to stay on screen. Width is never less than 26 columns. Height is never less than 4 lines, which is the minimum needed to render the border and tab bar. If the configured width is too narrow for the full tab bar, tab padding is reduced before the existing tab-bar scroll/truncation kicks in.
+
+### Layout presets
+
+`layouts` is a list of size/position presets. Press `cycle_layout` (default `<D-m>`) to ring through them while the terminal is open. The index also advances when the terminal is closed, so the next open uses the newly selected preset.
+
+```lua
+require("terminals").setup({
+  keys = {
+    cycle_layout = "<D-m>",
+  },
+  layouts = {
+    { width = "100%", height = "100%", row = 0, col = 0 },
+    { width = "40%", height = "50%", row = 0, col = "right" },
+  },
+})
+```
+
+The default presets are fullscreen (`100%` × `100%`) and a minimized top-right corner (`40%` × `50%`). Each preset accepts the same `width`, `height`, `row`, and `col` fields; unset fields inherit from the top-level window options.
 
 ## Commands
 

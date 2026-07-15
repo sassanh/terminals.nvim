@@ -2,6 +2,7 @@
 ---@field id? integer
 ---@field toggle? boolean
 ---@field append_mode? boolean
+---@field relayout? boolean
 ---@field args? string[]
 
 ---@class Terminals
@@ -15,6 +16,7 @@ M.terminal_window = nil
 M.border_window = nil
 M.terminal_state = {}
 M.last_terminal = 1
+M.layout_index = 1
 M.switching_terminals = false
 
 local MIN_WINDOW_WIDTH = 26
@@ -142,6 +144,41 @@ local function truncate_tab_headers(header1, header2, header3, available_width, 
     header3 = "─" .. vim.fn.strcharpart(header3, length - available_width + 1 + margin_trim, length)
   end
   return header1, header2, header3
+end
+
+---@return number|string|nil, number|string|nil, number|string|nil, number|string|nil
+function M.resolve_active_layout()
+  local config = require("terminals").config
+  local preset = config.layouts and config.layouts[M.layout_index]
+  if preset then
+    return preset.width or config.width,
+      preset.height or config.height,
+      preset.row or config.row,
+      preset.col or config.col
+  end
+  return config.width, config.height, config.row, config.col
+end
+
+function M.cycle_layout()
+  local config = require("terminals").config
+  local layouts = config.layouts
+  if not layouts or #layouts == 0 then
+    return
+  end
+  M.layout_index = (M.layout_index % #layouts) + 1
+  if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
+    return
+  end
+  local buffer = vim.api.nvim_win_get_buf(M.terminal_window)
+  local bufname = vim.api.nvim_buf_get_name(buffer)
+  local id = tonumber(bufname:gsub("^term://Terminal%-", ""), 10) or M.last_terminal
+  local append_mode = M.terminal_state[buffer] == true
+  M.activate_terminal({
+    id = id,
+    toggle = false,
+    append_mode = append_mode,
+    relayout = true,
+  })
 end
 
 ---@param width_config number|string|nil
@@ -296,6 +333,9 @@ function M.leave_terminal()
     M.save_terminal_state(true)
     M.toggle_terminal()
   end, { buffer = true, silent = true })
+  vim.keymap.set("t", config.keys.cycle_layout, function()
+    M.cycle_layout()
+  end, { buffer = true, silent = true })
   vim.keymap.set("t", config.keys.toggle_reverse_search, "<c-\\><c-n>?", { buffer = true })
   vim.keymap.set("t", config.keys.leave, "<c-\\><c-n>", { buffer = true, silent = true })
 end
@@ -324,8 +364,8 @@ function M.activate_terminal(opts)
   local should_create = true
   local buffer
 
-  local config = require("terminals").config
-  local layout = M.compute_window_layout(config.width, config.height, config.row, config.col, id)
+  local width_cfg, height_cfg, row_cfg, col_cfg = M.resolve_active_layout()
+  local layout = M.compute_window_layout(width_cfg, height_cfg, row_cfg, col_cfg, id)
   local width = layout.width
   local height = layout.height
   local row = layout.row
@@ -448,7 +488,7 @@ function M.activate_terminal(opts)
   if M.terminal_state[buffer] then
     if append_mode then
       vim.cmd.startinsert()
-    else
+    elseif not opts.relayout then
       M.toggle_terminal()
     end
   end
