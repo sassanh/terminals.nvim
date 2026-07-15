@@ -68,6 +68,8 @@ require("terminals").setup()
 
 ## Configuration
 
+### Keymaps
+
 All keymaps are configurable:
 
 ```lua
@@ -93,6 +95,34 @@ require("terminals").setup({
 `modifier` is used to build the `<D-0>` … `<D-9>` slot keymaps. Set it to match your platform's super/meta modifier (for example `"D"` on macOS).
 
 `preserved_keys` lets you keep specific terminal-mode keymaps when leaving input mode.
+
+### Window size and position
+
+`width`, `height`, `row`, and `col` control the terminal window layout. Each accepts a fixed number or a percentage string such as `"80%"`.
+
+```lua
+require("terminals").setup({
+  width = "70%",
+  height = 40,
+  row = 0,
+  col = "center",
+})
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `width` | Scales with editor width | Window width in columns |
+| `height` | `vim.o.lines - 1` | Window height in lines |
+| `row` | `0` | Distance from the top of the editor |
+| `col` | Horizontally centered | Distance from the left of the editor |
+
+For `row` and `col`, you can also use alignment keywords:
+
+- `"center"` — center along that axis
+- `"bottom"` — align to the bottom (`row` only)
+- `"right"` — align to the right (`col` only)
+
+Computed dimensions are clamped to stay on screen. Width is never less than 26 columns. Height is never less than 4 lines, which is the minimum needed to render the border and tab bar. If the configured width is too narrow for the full tab bar, tab padding is reduced before the existing tab-bar scroll/truncation kicks in.
 
 ## Commands
 

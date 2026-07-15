@@ -1,5 +1,5 @@
 *terminals.nvim.txt*
-                              For Neovim >= 0.8.0    Last change: 2026 July 10
+                              For Neovim >= 0.8.0    Last change: 2026 July 16
 
 ==============================================================================
 Table of Contents                           *terminals.nvim-table-of-contents*
@@ -88,6 +88,9 @@ DEFAULT KEYMAPS                *terminals.nvim-terminals.nvim-default-keymaps*
 
 CONFIGURATION                    *terminals.nvim-terminals.nvim-configuration*
 
+
+KEYMAPS ~
+
 All keymaps are configurable:
 
 >lua
@@ -117,6 +120,39 @@ match your platform’s super/meta modifier (for example `"D"` on macOS).
 input mode.
 
 
+WINDOW SIZE AND POSITION ~
+
+`width`, `height`, `row`, and `col` control the terminal window layout. Each
+accepts a fixed number or a percentage string such as `"80%"`.
+
+>lua
+    require("terminals").setup({
+      width = "70%",
+      height = 40,
+      row = 0,
+      col = "center",
+    })
+<
+
+  Option   Default                    Description
+  -------- -------------------------- --------------------------------------
+  width    Scales with editor width   Window width in columns
+  height   vim.o.lines - 1            Window height in lines
+  row      0                          Distance from the top of the editor
+  col      Horizontally centered      Distance from the left of the editor
+For `row` and `col`, you can also use alignment keywords:
+
+- `"center"` — center along that axis
+- `"bottom"` — align to the bottom (`row` only)
+- `"right"` — align to the right (`col` only)
+
+Computed dimensions are clamped to stay on screen. Width is never less than 26
+columns. Height is never less than 4 lines, which is the minimum needed to
+render the border and tab bar. If the configured width is too narrow for the
+full tab bar, tab padding is reduced before the existing tab-bar
+scroll/truncation kicks in.
+
+
 COMMANDS                              *terminals.nvim-terminals.nvim-commands*
 
 - `:Terminal [cmd]` — open a terminal, optionally running `cmd`
@@ -137,8 +173,8 @@ Options:
 - `append_mode` — start in insert mode (default: `true`)
 - `args` — shell command to run when creating a new terminal
 
-New terminals use your default shell unless `args` is passed or `shell` is set in
-`setup()`.
+New terminals use your default shell unless `args` is passed or `shell` is set
+in `setup()`.
 
 >lua
     require("terminals").setup({

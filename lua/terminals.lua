@@ -19,6 +19,10 @@ local logic = require("terminals.logic")
 ---@field keys Keymap
 ---@field preserved_keys string[]
 ---@field shell? string
+---@field width? number|string
+---@field height? number|string
+---@field row? number|string
+---@field col? number|string
 local config = {
   keys = {
     go_left = "<d-h>",
