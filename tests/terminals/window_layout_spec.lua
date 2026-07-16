@@ -120,6 +120,24 @@ describe("window layout", function()
     assert.equals(60, bottom_right.col)
   end)
 
+  it("resolves function expressions for size and position", function()
+    vim.o.columns = 120
+    vim.o.lines = 40
+
+    local layout = logic.compute_window_layout(function()
+      return 80
+    end, 20, function()
+      return 3
+    end, function()
+      return 7
+    end, 1)
+
+    assert.equals(80, layout.width)
+    assert.equals(20, layout.height)
+    assert.equals(3, layout.row)
+    assert.equals(7, layout.col)
+  end)
+
   it("clamps position so the window stays on screen", function()
     vim.o.columns = 100
     vim.o.lines = 50

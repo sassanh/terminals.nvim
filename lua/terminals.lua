@@ -17,19 +17,19 @@ local logic = require("terminals.logic")
 ---@field modifier string
 
 ---@class WindowLayout
----@field width? number|string
----@field height? number|string
----@field row? number|string
----@field col? number|string
+---@field width? number|string|fun(): number
+---@field height? number|string|fun(): number
+---@field row? number|string|fun(): number
+---@field col? number|string|fun(): number
 
 ---@class TerminalsConfig
 ---@field keys Keymap
 ---@field preserved_keys string[]
 ---@field shell? string
----@field width? number|string
----@field height? number|string
----@field row? number|string
----@field col? number|string
+---@field width? number|string|fun(): number
+---@field height? number|string|fun(): number
+---@field row? number|string|fun(): number
+---@field col? number|string|fun(): number
 ---@field layouts? WindowLayout[]
 local config = {
   keys = {
@@ -48,7 +48,7 @@ local config = {
     modifier = "d",
   },
   layouts = {
-    { width = "100%", height = "100%", row = 0, col = 0 },
+    { width = logic.default_width, height = logic.default_height, row = 0 },
     { width = "40%", height = "50%", row = 0, col = "right" },
   },
   preserved_keys = {},
@@ -133,5 +133,8 @@ M.group = vim.api.nvim_create_augroup("Terminal", { clear = true })
 function M.activate_terminal(opts)
   logic.activate_terminal(opts)
 end
+
+M.default_width = logic.default_width
+M.default_height = logic.default_height
 
 return M

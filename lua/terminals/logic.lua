@@ -22,21 +22,26 @@ M.switching_terminals = false
 local MIN_WINDOW_WIDTH = 26
 local CHROME_HEIGHT = 4
 
-local function default_width()
+function M.default_width()
   return vim.fn.float2nr(vim.o.columns - math.max(((vim.o.columns - 105) * 3 / 10), 0))
 end
 
-local function default_height()
+function M.default_height()
   return vim.o.lines - 1
 end
 
----@param value number|string|nil
+---@alias LayoutValue number|string|fun(): number
+
+---@param value LayoutValue|nil
 ---@param total number
 ---@param fallback fun(): number
 ---@return number
 local function resolve_dimension(value, total, fallback)
   if value == nil then
     return fallback()
+  end
+  if type(value) == "function" then
+    return vim.fn.float2nr(value())
   end
   if type(value) == "string" then
     local pct = value:match("^(%d+)%%$")
@@ -50,7 +55,9 @@ local function resolve_dimension(value, total, fallback)
   return fallback()
 end
 
----@param value number|string|nil
+---@alias PositionValue number|string|fun(): number
+
+---@param value PositionValue|nil
 ---@param total number
 ---@param window_size number
 ---@param fallback fun(): number
@@ -58,6 +65,9 @@ end
 local function resolve_position(value, total, window_size, fallback)
   if value == nil then
     return fallback()
+  end
+  if type(value) == "function" then
+    return vim.fn.float2nr(value())
   end
   if type(value) == "string" then
     if value == "center" then
@@ -189,8 +199,8 @@ end
 ---@return table
 function M.compute_window_layout(width_config, height_config, row_config, col_config, id)
   local margin = vim.o.columns > 102
-  local width = resolve_dimension(width_config, vim.o.columns, default_width)
-  local height = resolve_dimension(height_config, vim.o.lines, default_height)
+  local width = resolve_dimension(width_config, vim.o.columns, M.default_width)
+  local height = resolve_dimension(height_config, vim.o.lines, M.default_height)
 
   width = math.max(width, MIN_WINDOW_WIDTH)
   height = math.max(height, CHROME_HEIGHT)

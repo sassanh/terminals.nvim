@@ -100,7 +100,7 @@ require("terminals").setup({
 
 ### Window size and position
 
-`width`, `height`, `row`, and `col` control the terminal window layout. Each accepts a fixed number or a percentage string such as `"80%"`.
+`width`, `height`, `row`, and `col` control the terminal window layout. Each accepts a fixed number, a percentage string such as `"80%"`, or a function that returns a number. Functions are evaluated when the layout is applied, so you can reuse responsive formulas or read from `vim.o` at runtime.
 
 ```lua
 require("terminals").setup({
@@ -126,23 +126,46 @@ For `row` and `col`, you can also use alignment keywords:
 
 Computed dimensions are clamped to stay on screen. Width is never less than 26 columns. Height is never less than 4 lines, which is the minimum needed to render the border and tab bar. If the configured width is too narrow for the full tab bar, tab padding is reduced before the existing tab-bar scroll/truncation kicks in.
 
+The plugin exports `default_width()` and `default_height()` for the original responsive sizing formula:
+
+```lua
+local terminals = require("terminals")
+
+require("terminals").setup({
+  width = terminals.default_width,
+  height = terminals.default_height,
+})
+```
+
+You can also pass inline functions:
+
+```lua
+require("terminals").setup({
+  width = function()
+    return vim.fn.float2nr(vim.o.columns * 0.7)
+  end,
+})
+```
+
 ### Layout presets
 
 `layouts` is a list of size/position presets. Press `cycle_layout` (default `<D-m>`) to ring through them while the terminal is open. The index also advances when the terminal is closed, so the next open uses the newly selected preset.
 
 ```lua
+local terminals = require("terminals")
+
 require("terminals").setup({
   keys = {
     cycle_layout = "<D-m>",
   },
   layouts = {
-    { width = "100%", height = "100%", row = 0, col = 0 },
+    { width = terminals.default_width, height = terminals.default_height, row = 0 },
     { width = "40%", height = "50%", row = 0, col = "right" },
   },
 })
 ```
 
-The default presets are fullscreen (`100%` × `100%`) and a minimized top-right corner (`40%` × `50%`). Each preset accepts the same `width`, `height`, `row`, and `col` fields; unset fields inherit from the top-level window options.
+The default presets are the responsive maximized size (`default_width()` × `default_height()`, top-aligned and horizontally centered) and a compact top-right corner (`40%` × `50%`). Each preset accepts the same `width`, `height`, `row`, and `col` fields; unset fields inherit from the top-level window options.
 
 ## Commands
 
@@ -169,4 +192,9 @@ New terminals use your default shell unless `args` is passed or `shell` is set i
 require("terminals").setup({
   shell = "/bin/bash",
 })
+```
+
+```lua
+require("terminals").default_width()
+require("terminals").default_height()
 ```
