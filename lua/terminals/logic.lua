@@ -10,14 +10,17 @@
 ---@field border_window integer|nil
 ---@field terminal_state table<integer,boolean>
 ---@field last_terminal integer|nil
+---@field current_layout table|nil
 local M = {}
 
 M.terminal_window = nil
 M.border_window = nil
 M.terminal_state = {}
 M.last_terminal = 1
+M.current_layout = nil
 M.layout_index = 1
 M.switching_terminals = false
+M._mouse_press_on_tab = false
 
 local MIN_WINDOW_WIDTH = 26
 local CHROME_HEIGHT = 4
@@ -219,6 +222,11 @@ function M.compute_window_layout(width_config, height_config, row_config, col_co
   local header1, header2, header3 = build_tab_headers(id, tab_padding)
   header1, header2, header3 = truncate_tab_headers(header1, header2, header3, available_tab_width, id, margin)
 
+  local header_length = vim.fn.strcharlen(header1)
+  local total_header_pad = width - (margin and 2 or 0) - header_length
+  local header_left_pad = vim.fn.float2nr(total_header_pad / 2)
+  local header_right_pad = total_header_pad - header_left_pad
+
   return {
     width = width,
     height = height,
@@ -231,7 +239,181 @@ function M.compute_window_layout(width_config, height_config, row_config, col_co
     header2 = header2,
     header3 = header3,
     tab_bar_width = tab_bar_width(tab_padding),
+    header_left_pad = header_left_pad,
+    header_right_pad = header_right_pad,
   }
+end
+
+---@param header2 string truncated tab header line
+---@param tab_padding integer per-tab padding used to build the header
+---@param relative_index integer 0-indexed character index within header2
+---@return integer|nil tab id (0-9) or nil when the index is not on a tab
+function M.tab_id_at_header_index(header2, tab_padding, relative_index)
+  if type(header2) ~= "string" then
+    return nil
+  end
+  if type(tab_padding) ~= "number" or type(relative_index) ~= "number" then
+    return nil
+  end
+  local cell_width = tab_padding * 2 + 4
+  local full_width = 1 + 10 * cell_width
+  local truncated_length = vim.fn.strcharlen(header2)
+  if relative_index < 0 or relative_index >= truncated_length then
+    return nil
+  end
+  local is_truncated = truncated_length < full_width
+  local starts_with_border = vim.fn.strcharpart(header2, 0, 1) == "┤"
+  local start_index = 0
+  if is_truncated and not starts_with_border then
+    start_index = full_width - truncated_length + 1
+  end
+  if start_index > 0 and relative_index == 0 then
+    return nil
+  end
+  if start_index == 0 and is_truncated and relative_index == truncated_length - 1 then
+    if vim.fn.strcharpart(header2, truncated_length - 1, 1) == " " then
+      return nil
+    end
+  end
+  local original_index
+  if start_index == 0 then
+    original_index = relative_index
+  else
+    original_index = start_index + relative_index - 1
+  end
+  if original_index <= 0 or original_index >= full_width then
+    return nil
+  end
+  local cell = math.floor((original_index - 1) / cell_width)
+  if cell < 0 or cell > 9 then
+    return nil
+  end
+  return (cell + 1) % 10
+end
+
+---@param click_line integer 1-indexed buffer line in the border window
+---@param click_wincol integer 1-indexed window column of the click
+---@param layout table layout returned by compute_window_layout
+---@return integer|nil tab id (0-9) or nil when the click is not on a tab
+function M.tab_id_for_border_click(click_line, click_wincol, layout)
+  if type(click_line) ~= "number" or type(click_wincol) ~= "number" then
+    return nil
+  end
+  if click_line < 1 or click_line > 3 then
+    return nil
+  end
+  if layout == nil then
+    return nil
+  end
+  local header2 = layout.header2
+  local tab_padding = layout.tab_padding
+  local left_pad = layout.header_left_pad
+  if type(header2) ~= "string" or type(tab_padding) ~= "number" or type(left_pad) ~= "number" then
+    return nil
+  end
+  local header_start = left_pad + (layout.margin and 1 or 0)
+  local relative_index = (click_wincol - 1) - header_start
+  return M.tab_id_at_header_index(header2, tab_padding, relative_index)
+end
+
+function M.handle_tab_click()
+  local id = M.border_tab_under_mouse()
+  if id == nil then
+    return false
+  end
+  M.activate_terminal({ id = id, toggle = false })
+  return true
+end
+
+function M.handle_mouse_click()
+  return M.handle_tab_click()
+end
+
+function M._handle_mouse_pressed()
+  local id = M.border_tab_under_mouse()
+  if id ~= nil then
+    M._mouse_press_on_tab = true
+    vim.schedule(function()
+      M.activate_terminal({ id = id, toggle = false })
+    end)
+    return
+  end
+  M._mouse_press_on_tab = false
+  local mouse = vim.fn.getmousepos()
+  if mouse.winid == 0 then
+    return
+  end
+  vim.api.nvim_input_mouse("left", "press", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+end
+
+function M._handle_mouse_released()
+  if M._mouse_press_on_tab then
+    M._mouse_press_on_tab = false
+    return
+  end
+  M._mouse_press_on_tab = false
+  local mouse = vim.fn.getmousepos()
+  if mouse.winid == 0 then
+    return
+  end
+  vim.api.nvim_input_mouse("left", "release", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+end
+
+function M._mouse_click_expr(lhs)
+  local id = M.border_tab_under_mouse()
+  if id == nil then
+    return vim.api.nvim_replace_termcodes(lhs, true, true, true)
+  end
+  M.activate_terminal({ id = id, toggle = false })
+  return ""
+end
+
+function M._save_current_terminal_state()
+  if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
+    return
+  end
+  local current_window = vim.api.nvim_get_current_win()
+  if current_window ~= M.terminal_window then
+    return
+  end
+  local mode = vim.api.nvim_get_mode().mode
+  local is_insert = mode == "t"
+  local buffer = vim.api.nvim_win_get_buf(M.terminal_window)
+  M.terminal_state[buffer] = is_insert
+  local name = vim.api.nvim_buf_get_name(buffer)
+  if name and vim.startswith(name, "term://Terminal-") then
+    M.last_terminal = tonumber(name:gsub("^term://Terminal%-", ""), 10)
+  end
+end
+
+---@return integer|nil tab id under the mouse when the mouse is on a border tab
+function M.border_tab_under_mouse()
+  local layout = M.current_layout
+  if layout == nil then
+    return nil
+  end
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return nil
+  end
+  local mouse = vim.fn.getmousepos()
+  if mouse.winid == 0 or mouse.winid ~= M.border_window then
+    return nil
+  end
+  return M.tab_id_for_border_click(mouse.line, mouse.wincol, layout)
+end
+
+function M.on_win_enter()
+  if M.switching_terminals then
+    return
+  end
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return
+  end
+  local ok, current_window = pcall(vim.api.nvim_get_current_win)
+  if not ok or current_window ~= M.border_window then
+    return
+  end
+  M.handle_tab_click()
 end
 
 ---@param direction 1|-1
@@ -320,11 +502,9 @@ function M.leave_terminal()
   vim.keymap.set("t", config.keys.paste_in_place, "<c-\\><c-n>Pa", { buffer = true })
 
   vim.keymap.set("t", config.keys.go_left, function()
-    M.save_terminal_state(true)
     M.navigate(-1)
   end, { buffer = true, silent = true })
   vim.keymap.set("t", config.keys.go_right, function()
-    M.save_terminal_state(true)
     M.navigate(1)
   end, { buffer = true, silent = true })
   vim.keymap.set("t", config.keys.move_left, function()
@@ -335,23 +515,37 @@ function M.leave_terminal()
   end, { buffer = true, silent = true })
   for i = 0, 9 do
     vim.keymap.set("t", ("<%s-%s>"):format(config.keys.modifier, i), function()
-      M.save_terminal_state(true)
       M.activate_terminal({ id = i })
     end, { buffer = true, silent = true })
   end
   vim.keymap.set("t", config.keys.toggle, function()
-    M.save_terminal_state(true)
     M.toggle_terminal()
   end, { buffer = true, silent = true })
   vim.keymap.set("t", config.keys.cycle_layout, function()
     M.cycle_layout()
   end, { buffer = true, silent = true })
+  vim.keymap.set("n", config.keys.cycle_layout, function()
+    M.cycle_layout()
+  end, { buffer = true, silent = true })
   vim.keymap.set("t", config.keys.toggle_reverse_search, "<c-\\><c-n>?", { buffer = true })
   vim.keymap.set("t", config.keys.leave, "<c-\\><c-n>", { buffer = true, silent = true })
+  vim.keymap.set("t", "<LeftMouse>", function()
+    M._handle_mouse_pressed()
+  end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<LeftRelease>", function()
+    M._handle_mouse_released()
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<LeftMouse>", function()
+    M._handle_mouse_pressed()
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<LeftRelease>", function()
+    M._handle_mouse_released()
+  end, { buffer = true, silent = true })
 end
 
 --- @param opts ActivateTerminalOptions|nil
 function M.activate_terminal(opts)
+  M._save_current_terminal_state()
   opts = opts or {}
   local id = 1
   local toggle = opts["toggle"] == nil or opts["toggle"]
@@ -376,6 +570,7 @@ function M.activate_terminal(opts)
 
   local width_cfg, height_cfg, row_cfg, col_cfg = M.resolve_active_layout()
   local layout = M.compute_window_layout(width_cfg, height_cfg, row_cfg, col_cfg, id)
+  M.current_layout = layout
   local width = layout.width
   local height = layout.height
   local row = layout.row
@@ -384,6 +579,8 @@ function M.activate_terminal(opts)
   local header1 = layout.header1
   local header2 = layout.header2
   local header3 = layout.header3
+  local left_pad = layout.header_left_pad
+  local right_pad = layout.header_right_pad
 
   local bufnr = vim.fn.bufnr(buffer_name)
   if bufnr ~= -1 then
@@ -418,9 +615,8 @@ function M.activate_terminal(opts)
     vim.api.nvim_set_option_value("signcolumn", "no", { win = M.border_window })
     vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.border_window })
   end
-  local l1 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
-  local l2 = (width - (margin and 2 or 0) - vim.fn.strcharlen(header1)) / 2
-    + ((width - 2 - vim.fn.strcharlen(header1)) % 2)
+  local l1 = left_pad
+  local l2 = right_pad
   if margin then
     vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
     vim.api.nvim_buf_set_lines(
@@ -507,21 +703,20 @@ function M.activate_terminal(opts)
 end
 
 function M.close_terminal()
+  M.switching_terminals = true
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
     vim.api.nvim_win_close(M.terminal_window, false)
   end
   if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
     vim.api.nvim_win_close(M.border_window, false)
   end
+  M.switching_terminals = false
 end
 
 function M.toggle_terminal(append_mode)
   append_mode = append_mode == nil or append_mode
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    vim.api.nvim_win_close(M.terminal_window, false)
-    if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
-      vim.api.nvim_win_close(M.border_window, false)
-    end
+    M.close_terminal()
   else
     M.activate_terminal({ id = M.last_terminal, toggle = true, append_mode = append_mode })
   end
@@ -533,6 +728,9 @@ function M.terminal_window_closed(name)
     return
   end
   if vim.startswith(name, "term://Terminal-") then
+    if M.border_tab_under_mouse() ~= nil then
+      return
+    end
     if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
       vim.api.nvim_win_close(M.terminal_window, false)
       if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
@@ -553,7 +751,6 @@ end
 
 function M.handle_resize()
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    M.save_terminal_state(false)
     M.toggle_terminal()
     M.toggle_terminal(false)
   end

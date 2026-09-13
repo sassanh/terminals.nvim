@@ -93,11 +93,9 @@ M.setup = function(args)
   })
 
   vim.keymap.set("n", M.config.keys.go_left, function()
-    logic.save_terminal_state(false)
     logic.navigate(-1)
   end, { silent = true })
   vim.keymap.set("n", M.config.keys.go_right, function()
-    logic.save_terminal_state(false)
     logic.navigate(1)
   end, { silent = true })
   vim.keymap.set("n", M.config.keys.move_left, function()
@@ -111,20 +109,21 @@ M.setup = function(args)
   vim.keymap.set("i", M.config.keys.toggle_reverse_search, "<c-c>?")
 
   vim.keymap.set("n", M.config.keys.toggle, function()
-    logic.save_terminal_state(false)
     logic.toggle_terminal()
-  end, { silent = true })
-
-  vim.keymap.set("n", M.config.keys.cycle_layout, function()
-    logic.cycle_layout()
   end, { silent = true })
 
   for i = 0, 9 do
     vim.keymap.set("n", ("<%s-%s>"):format(M.config.keys.modifier, i), function()
-      require("terminals.logic").save_terminal_state(false)
       require("terminals.logic").activate_terminal({ id = i })
     end, { silent = true })
   end
+
+  vim.keymap.set({ "n", "i", "v" }, "<LeftMouse>", function()
+    require("terminals.logic")._handle_mouse_pressed()
+  end, { silent = true })
+  vim.keymap.set({ "n", "i", "v" }, "<LeftRelease>", function()
+    require("terminals.logic")._handle_mouse_released()
+  end, { silent = true })
 end
 
 M.group = vim.api.nvim_create_augroup("Terminal", { clear = true })

@@ -64,8 +64,18 @@ describe("layout cycling", function()
     assert.equals(1, logic.layout_index)
   end)
 
-  it("registers the cycle_layout keymap", function()
+  it("registers the cycle_layout keymap only for terminal buffers", function()
     plugin.setup()
-    assert.not_equals("", vim.fn.maparg(plugin.config.keys.cycle_layout, "n"))
+    assert.equals("", vim.fn.maparg(plugin.config.keys.cycle_layout, "n"))
+
+    local buffer = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_set_current_buf(buffer)
+    logic.leave_terminal()
+
+    local keymaps = vim.api.nvim_buf_get_keymap(buffer, "n")
+    local cycle_layout_keymap = vim.tbl_filter(function(keymap)
+      return keymap.lhs == "<D-m>"
+    end, keymaps)
+    assert.equals(1, #cycle_layout_keymap)
   end)
 end)
