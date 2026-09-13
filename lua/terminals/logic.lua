@@ -122,18 +122,42 @@ local function choose_tab_padding(available_width)
   return padding
 end
 
----@param id integer
+---@param id integer primary bracketed tab id
 ---@param tab_padding integer
+---@param extra_bracket integer|table|nil additional bracketed tab id(s) shown during drag
 ---@return string, string, string
-local function build_tab_headers(id, tab_padding)
+local function build_tab_headers(id, tab_padding, extra_bracket)
   local header1 = "╭"
   local header2 = "┤"
   local header3 = "╰"
   local pad = (" "):rep(tab_padding)
   local dashes = ("─"):rep(tab_padding * 2 + 3)
+  local function is_bracketed(digit)
+    if digit == id then
+      return true
+    end
+    if extra_bracket == nil then
+      return false
+    end
+    if type(extra_bracket) == "number" then
+      return digit == extra_bracket
+    end
+    if type(extra_bracket) == "table" then
+      if extra_bracket[digit] then
+        return true
+      end
+      for _, value in pairs(extra_bracket) do
+        if value == digit then
+          return true
+        end
+      end
+    end
+    return false
+  end
   for i = 1, 10 do
+    local digit = i % 10
     header1 = header1 .. dashes
-    header2 = header2 .. pad .. ((i % 10) == id and "[" .. (i % 10) .. "]" or " " .. (i % 10) .. " ") .. pad
+    header2 = header2 .. pad .. (is_bracketed(digit) and "[" .. digit .. "]" or " " .. digit .. " ") .. pad
     header3 = header3 .. dashes
     header1 = header1 .. (i < 10 and "┬" or "╮")
     header2 = header2 .. (i < 10 and "│" or "├")
@@ -165,6 +189,70 @@ local function truncate_tab_headers(header1, header2, header3, available_width, 
     header3 = "─" .. vim.fn.strcharpart(header3, length - available_width + 1 + margin_trim, length)
   end
   return header1, header2, header3
+end
+
+---@param layout table layout returned by compute_window_layout
+---@param header2 string truncated header2 to embed
+---@return string full border-buffer line for the tab-bar row
+local function header2_border_line(layout, header2)
+  local left_pad = layout.header_left_pad
+  local right_pad = layout.header_right_pad
+  if layout.margin then
+    return "╭" .. ("─"):rep(left_pad) .. header2 .. ("─"):rep(right_pad) .. "╮"
+  end
+  return ("─"):rep(left_pad) .. header2 .. ("─"):rep(right_pad)
+end
+
+---@param buffer integer border buffer id
+---@param layout table layout returned by compute_window_layout
+---@param header2 string truncated header2 to show
+local function set_border_header2(buffer, layout, header2)
+  pcall(vim.api.nvim_buf_set_lines, buffer, 1, 2, false, { header2_border_line(layout, header2) })
+end
+
+---@param layout table layout returned by compute_window_layout
+---@param source_id integer press tab id
+---@param dest_id integer|nil hovered tab id
+---@return string truncated header2 showing [source<=>dest] during drag
+local function drag_preview_header2(layout, source_id, dest_id)
+  local available_width = layout.width - (layout.margin and 2 or 0)
+  local header1, full_header2, header3 = build_tab_headers(source_id, layout.tab_padding, nil)
+  if dest_id ~= nil and dest_id ~= source_id then
+    local tab_padding = layout.tab_padding
+    -- Bracketed swap labels, keeping cell width stable.
+    -- Normal cell is pad + 3 + pad; bracketed label is (pad-2) + 7 + (pad-2).
+    -- With padding 1 there is no room for brackets, so fall back to plain labels.
+    local source_label, dest_label, side
+    if tab_padding >= 2 then
+      side = (" "):rep(tab_padding - 2)
+      source_label = "[" .. source_id .. "<=>" .. dest_id .. "]"
+      dest_label = "[" .. dest_id .. "<=>" .. source_id .. "]"
+    elseif tab_padding == 1 then
+      side = ""
+      source_label = source_id .. "<=>" .. dest_id
+      dest_label = dest_id .. "<=>" .. source_id
+    end
+    if source_label ~= nil then
+      local pad = (" "):rep(tab_padding)
+      local rebuilt = "┤"
+      for i = 1, 10 do
+        local digit = i % 10
+        if digit == source_id then
+          rebuilt = rebuilt .. side .. source_label .. side
+        elseif digit == dest_id then
+          rebuilt = rebuilt .. side .. dest_label .. side
+        else
+          rebuilt = rebuilt .. pad .. " " .. digit .. " " .. pad
+        end
+        rebuilt = rebuilt .. (i < 10 and "│" or "├")
+      end
+      full_header2 = rebuilt
+    else
+      header1, full_header2, header3 = build_tab_headers(source_id, tab_padding, dest_id)
+    end
+  end
+  _, full_header2, _ = truncate_tab_headers(header1, full_header2, header3, available_width, source_id, layout.margin)
+  return full_header2
 end
 
 ---@return number|string|nil, number|string|nil, number|string|nil, number|string|nil
@@ -374,18 +462,14 @@ function M._handle_mouse_dragged()
     forward_mouse("<LeftDrag>")
     return
   end
-  local id = M.border_tab_under_mouse()
-  if id == nil then
-    M._show_drag_preview(press_id, nil)
-    return
-  end
+  local id = M.drag_tab_under_mouse()
   M._show_drag_preview(press_id, id)
 end
 
 function M._handle_mouse_released()
   local press_id = M._mouse_press_tab_id
   if press_id ~= nil then
-    local release_id = M.border_tab_under_mouse()
+    local release_id = M.drag_tab_under_mouse()
     M._mouse_press_tab_id = nil
     if release_id ~= nil and release_id ~= press_id then
       M._clear_drag_preview()
@@ -461,6 +545,68 @@ function M.border_tab_under_mouse()
     return nil
   end
   return M.tab_id_for_border_click(mouse.line, mouse.wincol, layout)
+end
+
+---@param header2 string truncated tab header line
+---@param tab_padding integer per-tab padding used to build the header
+---@param relative_index integer 0-indexed character index within header2
+---@return integer|nil nearest visible tab id, clamping out-of-range positions to the edge tabs
+local function nearest_tab_at_header_index(header2, tab_padding, relative_index)
+  local exact = M.tab_id_at_header_index(header2, tab_padding, relative_index)
+  if exact ~= nil then
+    return exact
+  end
+  local length = vim.fn.strcharlen(header2)
+  if relative_index < length / 2 then
+    for index = 0, length - 1 do
+      local id = M.tab_id_at_header_index(header2, tab_padding, index)
+      if id ~= nil then
+        return id
+      end
+    end
+  else
+    for index = length - 1, 0, -1 do
+      local id = M.tab_id_at_header_index(header2, tab_padding, index)
+      if id ~= nil then
+        return id
+      end
+    end
+  end
+  return nil
+end
+
+---@return integer|nil tab id under the mouse x-position, ignoring the y-position.
+---Used during the dragging phase so a drag keeps its target while the mouse
+---moves above or below the tab bar. Falls back to the strict tab-bar mapping
+---when screen coordinates are unavailable.
+function M.drag_tab_under_mouse()
+  local layout = M.current_layout
+  if layout == nil then
+    return nil
+  end
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return nil
+  end
+  local mouse = vim.fn.getmousepos()
+  if mouse == nil or mouse.winid == 0 then
+    return nil
+  end
+  if type(mouse.screencol) ~= "number" then
+    return M.border_tab_under_mouse()
+  end
+  local ok, position = pcall(vim.api.nvim_win_get_position, M.border_window)
+  if not ok or type(position) ~= "table" or type(position[2]) ~= "number" then
+    return M.border_tab_under_mouse()
+  end
+  local header2 = layout.header2
+  local tab_padding = layout.tab_padding
+  local left_pad = layout.header_left_pad
+  if type(header2) ~= "string" or type(tab_padding) ~= "number" or type(left_pad) ~= "number" then
+    return nil
+  end
+  local header_start = left_pad + (layout.margin and 1 or 0)
+  local relative_index = (mouse.screencol - 1) - position[2] - header_start
+  return nearest_tab_at_header_index(header2, tab_padding, relative_index)
 end
 
 ---@param layout table layout returned by compute_window_layout
@@ -593,6 +739,7 @@ function M._flash_swap_tabs(first, second, duration_ms)
 end
 
 function M._clear_drag_preview()
+  local previous = M._drag_preview
   M._drag_preview = nil
   if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
     return
@@ -602,6 +749,20 @@ function M._clear_drag_preview()
     return
   end
   pcall(vim.api.nvim_buf_clear_namespace, buffer, DRAG_PREVIEW_NS, 0, -1)
+  if previous == nil then
+    return
+  end
+  local layout = M.current_layout
+  if layout == nil or type(layout.header2) ~= "string" then
+    return
+  end
+  if type(previous.source) ~= "number" then
+    return
+  end
+  local shown = drag_preview_header2(layout, previous.source, previous.dest)
+  if shown ~= layout.header2 then
+    set_border_header2(buffer, layout, layout.header2)
+  end
 end
 
 ---@param source_id integer press tab id
@@ -623,6 +784,20 @@ function M._show_drag_preview(source_id, dest_id)
     return
   end
   pcall(vim.api.nvim_buf_clear_namespace, buffer, DRAG_PREVIEW_NS, 0, -1)
+  if type(source_id) == "number" and type(layout.header2) == "string" then
+    local preview_header2 = drag_preview_header2(layout, source_id, dest_id)
+    if preview_header2 ~= layout.header2 then
+      set_border_header2(buffer, layout, preview_header2)
+    elseif current ~= nil then
+      local shown = nil
+      if type(current.source) == "number" then
+        shown = drag_preview_header2(layout, current.source, current.dest)
+      end
+      if shown ~= nil and shown ~= layout.header2 then
+        set_border_header2(buffer, layout, layout.header2)
+      end
+    end
+  end
   ensure_drag_highlights()
   if dest_id == nil then
     highlight_tab_cell(buffer, layout, source_id, "TerminalsTabDragSource", DRAG_PREVIEW_NS)
@@ -954,13 +1129,7 @@ function M.activate_terminal(opts)
   local l2 = right_pad
   if margin then
     vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
-    vim.api.nvim_buf_set_lines(
-      border_buffer,
-      -1,
-      -1,
-      true,
-      { "╭" .. ("─"):rep(l1) .. header2 .. ("─"):rep(l2) .. "╮" }
-    )
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { header2_border_line(layout, header2) })
     vim.api.nvim_buf_set_lines(
       border_buffer,
       -1,
@@ -974,7 +1143,7 @@ function M.activate_terminal(opts)
     vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "╰" .. ("─"):rep(width - 2) .. "╯" })
   else
     vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1) .. header1 .. (" "):rep(l2) })
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { ("─"):rep(l1) .. header2 .. ("─"):rep(l2) })
+    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { header2_border_line(layout, header2) })
     vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { (" "):rep(l1) .. header3 .. (" "):rep(l2) })
     for _ = 1, height - 4 do
       vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { " " })

@@ -260,6 +260,75 @@ describe("tab drag", function()
       assert.is_nil(logic._drag_preview)
     end)
 
+    it("keeps the drag target when the mouse leaves the tab-bar rows", function()
+      local layout, border_window = open_border(2)
+      logic.terminal_window = vim.api.nvim_open_win(vim.api.nvim_create_buf(false, true), false, {
+        relative = "editor",
+        row = 10,
+        col = 10,
+        width = 20,
+        height = 5,
+      })
+      local swapped = nil
+      local swap_original = logic.swap_terminals
+      logic.swap_terminals = function(first, second)
+        swapped = { first, second }
+      end
+      logic.activate_terminal = function() end
+      vim.fn.getmousepos = function()
+        return { winid = border_window, line = 2, wincol = wincol_for(layout, 2) }
+      end
+      logic._handle_mouse_pressed()
+      vim.wait(30)
+      assert.same({ source = 2, dest = 2 }, logic._drag_preview)
+      local position = vim.api.nvim_win_get_position(border_window)
+      local screencol_for = function(id)
+        return position[2] + wincol_for(layout, id)
+      end
+      vim.fn.getmousepos = function()
+        return { winid = logic.terminal_window, line = 5, wincol = 5, screenrow = 20, screencol = screencol_for(7) }
+      end
+      logic._handle_mouse_dragged()
+      assert.same({ source = 2, dest = 7 }, logic._drag_preview)
+      local buffer = vim.api.nvim_win_get_buf(border_window)
+      local lines = vim.api.nvim_buf_get_lines(buffer, 1, 2, false)
+      assert.is_true(lines[1]:find("[2<=>7]", 1, true) ~= nil)
+      assert.is_true(lines[1]:find("[7<=>2]", 1, true) ~= nil)
+      logic._handle_mouse_released()
+      assert.same({ 2, 7 }, swapped)
+      assert.is_nil(logic._mouse_press_tab_id)
+      assert.is_nil(logic._drag_preview)
+      logic.swap_terminals = swap_original
+    end)
+
+    it("clamps the drag target to the edge tab for x outside the popup", function()
+      local layout, border_window = open_border(2)
+      logic.activate_terminal = function() end
+      vim.fn.getmousepos = function()
+        return { winid = border_window, line = 2, wincol = wincol_for(layout, 2) }
+      end
+      logic._handle_mouse_pressed()
+      vim.wait(30)
+      assert.same({ source = 2, dest = 2 }, logic._drag_preview)
+      local position = vim.api.nvim_win_get_position(border_window)
+      vim.fn.getmousepos = function()
+        return { winid = border_window, line = 20, wincol = 1, screenrow = 30, screencol = position[2] - 50 }
+      end
+      logic._handle_mouse_dragged()
+      assert.same({ source = 2, dest = 1 }, logic._drag_preview)
+      vim.fn.getmousepos = function()
+        return { winid = border_window, line = 20, wincol = 1, screenrow = 30, screencol = position[2] + 500 }
+      end
+      logic._handle_mouse_dragged()
+      assert.same({ source = 2, dest = 0 }, logic._drag_preview)
+      vim.fn.getmousepos = function()
+        return { winid = 0, line = 0, wincol = 0, screenrow = 0, screencol = 0 }
+      end
+      assert.is_nil(logic.drag_tab_under_mouse())
+      logic._handle_mouse_released()
+      assert.is_nil(logic._drag_preview)
+    end)
+
     it("forwards drags that did not start on a tab", function()
       local _, border_window = open_border(1)
       local forwarded = {}
