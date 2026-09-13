@@ -21,9 +21,12 @@ M.current_layout = nil
 M.layout_index = 1
 M.switching_terminals = false
 M._mouse_press_on_tab = false
+M.tab_scroll_cooldown_ms = 150
+M._last_tab_scroll_ms = nil
 
 local MIN_WINDOW_WIDTH = 26
 local CHROME_HEIGHT = 4
+local TAB_BAR_HEIGHT = 3
 
 function M.default_width()
   return vim.fn.float2nr(vim.o.columns - math.max(((vim.o.columns - 105) * 3 / 10), 0))
@@ -299,7 +302,7 @@ function M.tab_id_for_border_click(click_line, click_wincol, layout)
   if type(click_line) ~= "number" or type(click_wincol) ~= "number" then
     return nil
   end
-  if click_line < 1 or click_line > 3 then
+  if click_line < 1 or click_line > TAB_BAR_HEIGHT then
     return nil
   end
   if layout == nil then
@@ -386,20 +389,81 @@ function M._save_current_terminal_state()
   end
 end
 
+---@param mouse table mouse position returned by vim.fn.getmousepos()
+---@param border_window integer|nil border window id
+---@return boolean true when the mouse is over the tab-bar rows of the border window
+local function mouse_on_tab_bar(mouse, border_window)
+  if mouse == nil or mouse.winid == 0 then
+    return false
+  end
+  if border_window == nil or not vim.api.nvim_win_is_valid(border_window) then
+    return false
+  end
+  if mouse.winid ~= border_window then
+    return false
+  end
+  return mouse.line >= 1 and mouse.line <= TAB_BAR_HEIGHT
+end
+
+---@return boolean true when the mouse is over the tab-bar rows of the border window
+function M.is_mouse_on_tab_bar()
+  if M.current_layout == nil then
+    return false
+  end
+  return mouse_on_tab_bar(vim.fn.getmousepos(), M.border_window)
+end
+
 ---@return integer|nil tab id under the mouse when the mouse is on a border tab
 function M.border_tab_under_mouse()
   local layout = M.current_layout
   if layout == nil then
     return nil
   end
-  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
-    return nil
-  end
   local mouse = vim.fn.getmousepos()
-  if mouse.winid == 0 or mouse.winid ~= M.border_window then
+  if not mouse_on_tab_bar(mouse, M.border_window) then
     return nil
   end
   return M.tab_id_for_border_click(mouse.line, mouse.wincol, layout)
+end
+
+---@return number current monotonic time in milliseconds
+function M._now_ms()
+  if vim.uv ~= nil and vim.uv.hrtime ~= nil then
+    return vim.uv.hrtime() / 1e6
+  end
+  if vim.loop ~= nil and vim.loop.hrtime ~= nil then
+    return vim.loop.hrtime() / 1e6
+  end
+  return vim.fn.reltimefloat(vim.fn.reltime()) * 1000
+end
+
+---@param direction 1|-1
+---@param now_ms number|nil override for the current time (used by tests)
+---@return boolean true when the scroll was over the tab bar and swallowed
+function M.handle_tab_scroll(direction, now_ms)
+  if not M.is_mouse_on_tab_bar() then
+    return false
+  end
+  local now = now_ms or M._now_ms()
+  if M._last_tab_scroll_ms ~= nil and now - M._last_tab_scroll_ms < M.tab_scroll_cooldown_ms then
+    return true
+  end
+  M._last_tab_scroll_ms = now
+  M.navigate(direction)
+  return true
+end
+
+---@param wheel_action string one of "up", "down", "left", "right"
+---@param direction 1|-1 navigation direction matching the wheel action
+function M._handle_scroll(wheel_action, direction)
+  if M.handle_tab_scroll(direction) then
+    return
+  end
+  local mouse = vim.fn.getmousepos()
+  if mouse.winid == 0 then
+    return
+  end
+  vim.api.nvim_input_mouse("wheel", wheel_action, "", 0, mouse.screenrow - 1, mouse.screencol - 1)
 end
 
 function M.on_win_enter()
@@ -540,6 +604,30 @@ function M.leave_terminal()
   end, { buffer = true, silent = true })
   vim.keymap.set("n", "<LeftRelease>", function()
     M._handle_mouse_released()
+  end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<ScrollWheelUp>", function()
+    M._handle_scroll("up", -1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<ScrollWheelDown>", function()
+    M._handle_scroll("down", 1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<ScrollWheelLeft>", function()
+    M._handle_scroll("left", -1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<ScrollWheelRight>", function()
+    M._handle_scroll("right", 1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<ScrollWheelUp>", function()
+    M._handle_scroll("up", -1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<ScrollWheelDown>", function()
+    M._handle_scroll("down", 1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<ScrollWheelLeft>", function()
+    M._handle_scroll("left", -1)
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<ScrollWheelRight>", function()
+    M._handle_scroll("right", 1)
   end, { buffer = true, silent = true })
 end
 
