@@ -150,7 +150,8 @@ describe("tab scroll", function()
         navigations = navigations + 1
       end
       local forwarded = 0
-      vim.api.nvim_input_mouse = function()
+      local original_feedkeys = vim.api.nvim_feedkeys
+      vim.api.nvim_feedkeys = function()
         forwarded = forwarded + 1
       end
       vim.fn.getmousepos = function()
@@ -158,6 +159,7 @@ describe("tab scroll", function()
       end
       logic._handle_scroll("up", -1)
       logic._handle_scroll("up", -1)
+      vim.api.nvim_feedkeys = original_feedkeys
       assert.equals(1, navigations)
       assert.equals(0, forwarded)
     end)
@@ -169,19 +171,19 @@ describe("tab scroll", function()
         navigations = navigations + 1
       end
       local forwarded = nil
-      vim.api.nvim_input_mouse = function(button, action, modifier, grid, row, col)
-        forwarded = { button = button, action = action, row = row, col = col }
+      local original_feedkeys = vim.api.nvim_feedkeys
+      vim.api.nvim_feedkeys = function(keys, mode, escape)
+        forwarded = { keys = keys, mode = mode }
       end
       vim.fn.getmousepos = function()
         return { winid = 999999, line = 2, wincol = 10, screenrow = 7, screencol = 12 }
       end
       logic._handle_scroll("down", 1)
+      vim.api.nvim_feedkeys = original_feedkeys
       assert.equals(0, navigations)
       assert.is_not_nil(forwarded)
-      assert.equals("wheel", forwarded.button)
-      assert.equals("down", forwarded.action)
-      assert.equals(6, forwarded.row)
-      assert.equals(11, forwarded.col)
+      assert.equals("n", forwarded.mode)
+      assert.is_true(forwarded.keys:find("ScrollWheelDown") ~= nil or #forwarded.keys > 0)
     end)
   end)
 

@@ -337,6 +337,11 @@ function M.handle_mouse_click()
   return M.handle_tab_click()
 end
 
+---@param lhs string keycode to forward without remapping (avoids re-triggering this mapping)
+local function forward_mouse(lhs)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(lhs, true, true, true), "n", false)
+end
+
 function M._handle_mouse_pressed()
   local id = M.border_tab_under_mouse()
   if id ~= nil then
@@ -356,7 +361,7 @@ function M._handle_mouse_pressed()
   if mouse.winid == 0 then
     return
   end
-  vim.api.nvim_input_mouse("left", "press", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+  forward_mouse("<LeftMouse>")
 end
 
 function M._handle_mouse_dragged()
@@ -366,7 +371,7 @@ function M._handle_mouse_dragged()
     if mouse.winid == 0 then
       return
     end
-    vim.api.nvim_input_mouse("left", "drag", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+    forward_mouse("<LeftDrag>")
     return
   end
   local id = M.border_tab_under_mouse()
@@ -395,7 +400,7 @@ function M._handle_mouse_released()
   if mouse.winid == 0 then
     return
   end
-  vim.api.nvim_input_mouse("left", "release", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+  forward_mouse("<LeftRelease>")
 end
 
 function M._mouse_click_expr(lhs)
@@ -667,7 +672,15 @@ function M._handle_scroll(wheel_action, direction)
   if mouse.winid == 0 then
     return
   end
-  vim.api.nvim_input_mouse("wheel", wheel_action, "", 0, mouse.screenrow - 1, mouse.screencol - 1)
+  if wheel_action == "up" then
+    forward_mouse("<ScrollWheelUp>")
+  elseif wheel_action == "down" then
+    forward_mouse("<ScrollWheelDown>")
+  elseif wheel_action == "left" then
+    forward_mouse("<ScrollWheelLeft>")
+  elseif wheel_action == "right" then
+    forward_mouse("<ScrollWheelRight>")
+  end
 end
 
 function M.on_win_enter()

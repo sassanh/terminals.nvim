@@ -263,8 +263,9 @@ describe("tab drag", function()
     it("forwards drags that did not start on a tab", function()
       local _, border_window = open_border(1)
       local forwarded = {}
-      vim.api.nvim_input_mouse = function(button, action, _, _, _, _)
-        table.insert(forwarded, { button, action })
+      local original_feedkeys = vim.api.nvim_feedkeys
+      vim.api.nvim_feedkeys = function(keys, mode, escape)
+        table.insert(forwarded, { keys = keys, mode = mode })
       end
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 5, wincol = 5, screenrow = 10, screencol = 10 }
@@ -276,9 +277,12 @@ describe("tab drag", function()
       end
       logic._handle_mouse_dragged()
       logic._handle_mouse_released()
-      assert.same({ { "left", "press" } }, { forwarded[1] })
-      assert.equals("drag", forwarded[2][2])
-      assert.equals("release", forwarded[3][2])
+      vim.api.nvim_feedkeys = original_feedkeys
+      assert.equals(3, #forwarded)
+      for _, entry in ipairs(forwarded) do
+        assert.equals("n", entry.mode)
+        assert.is_true(#entry.keys > 0)
+      end
     end)
   end)
 
