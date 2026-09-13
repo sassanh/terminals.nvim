@@ -20,13 +20,18 @@ M.last_terminal = 1
 M.current_layout = nil
 M.layout_index = 1
 M.switching_terminals = false
-M._mouse_press_on_tab = false
+M._mouse_press_tab_id = nil
+M._drag_preview = nil
 M.tab_scroll_cooldown_ms = 150
 M._last_tab_scroll_ms = nil
 
 local MIN_WINDOW_WIDTH = 26
 local CHROME_HEIGHT = 4
 local TAB_BAR_HEIGHT = 3
+local DRAG_PREVIEW_NS = vim.api.nvim_create_namespace("terminals_tab_drag")
+local SWAP_FLASH_NS = vim.api.nvim_create_namespace("terminals_tab_swap")
+local SWAP_FLASH_MS = 400
+local swap_flash_timer = nil
 
 function M.default_width()
   return vim.fn.float2nr(vim.o.columns - math.max(((vim.o.columns - 105) * 3 / 10), 0))
@@ -335,13 +340,18 @@ end
 function M._handle_mouse_pressed()
   local id = M.border_tab_under_mouse()
   if id ~= nil then
-    M._mouse_press_on_tab = true
+    M._mouse_press_tab_id = id
+    M._clear_drag_preview()
     vim.schedule(function()
       M.activate_terminal({ id = id, toggle = false })
+      if M._mouse_press_tab_id == id then
+        M._show_drag_preview(id, id)
+      end
     end)
     return
   end
-  M._mouse_press_on_tab = false
+  M._mouse_press_tab_id = nil
+  M._clear_drag_preview()
   local mouse = vim.fn.getmousepos()
   if mouse.winid == 0 then
     return
@@ -349,12 +359,38 @@ function M._handle_mouse_pressed()
   vim.api.nvim_input_mouse("left", "press", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
 end
 
-function M._handle_mouse_released()
-  if M._mouse_press_on_tab then
-    M._mouse_press_on_tab = false
+function M._handle_mouse_dragged()
+  local press_id = M._mouse_press_tab_id
+  if press_id == nil then
+    local mouse = vim.fn.getmousepos()
+    if mouse.winid == 0 then
+      return
+    end
+    vim.api.nvim_input_mouse("left", "drag", "", 0, mouse.screenrow - 1, mouse.screencol - 1)
     return
   end
-  M._mouse_press_on_tab = false
+  local id = M.border_tab_under_mouse()
+  if id == nil then
+    M._show_drag_preview(press_id, nil)
+    return
+  end
+  M._show_drag_preview(press_id, id)
+end
+
+function M._handle_mouse_released()
+  local press_id = M._mouse_press_tab_id
+  if press_id ~= nil then
+    local release_id = M.border_tab_under_mouse()
+    M._mouse_press_tab_id = nil
+    if release_id ~= nil and release_id ~= press_id then
+      M._clear_drag_preview()
+      M.swap_terminals(press_id, release_id)
+      return
+    end
+    M._clear_drag_preview()
+    return
+  end
+  M._clear_drag_preview()
   local mouse = vim.fn.getmousepos()
   if mouse.winid == 0 then
     return
@@ -426,6 +462,178 @@ function M.border_tab_under_mouse()
   return M.tab_id_for_border_click(mouse.line, mouse.wincol, layout)
 end
 
+---@param layout table layout returned by compute_window_layout
+---@param tab_id integer tab id (0-9)
+---@return integer|nil start 0-indexed inclusive character index in header2, integer|nil end_exclusive character index
+function M._tab_cell_char_range(layout, tab_id)
+  if layout == nil or type(tab_id) ~= "number" then
+    return nil
+  end
+  local header2 = layout.header2
+  local tab_padding = layout.tab_padding
+  if type(header2) ~= "string" or type(tab_padding) ~= "number" then
+    return nil
+  end
+  local length = vim.fn.strcharlen(header2)
+  local first = nil
+  local last = nil
+  for index = 0, length - 1 do
+    if M.tab_id_at_header_index(header2, tab_padding, index) == tab_id then
+      if first == nil then
+        first = index
+      end
+      last = index
+    end
+  end
+  if first == nil or last == nil then
+    return nil
+  end
+  return first, last + 1
+end
+
+local function ensure_drag_highlights()
+  vim.api.nvim_set_hl(0, "TerminalsTabDragSource", { link = "Visual", default = true })
+  vim.api.nvim_set_hl(0, "TerminalsTabDragDest", { link = "Search", default = true })
+end
+
+---@param buffer integer border buffer id
+---@param layout table layout returned by compute_window_layout
+---@param tab_id integer tab id (0-9)
+---@param highlight string highlight group name
+---@param namespace integer namespace id for the extmark
+local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace)
+  local start_char, end_char = M._tab_cell_char_range(layout, tab_id)
+  if start_char == nil or end_char == nil then
+    return
+  end
+  local header2 = layout.header2
+  if type(header2) == "string" then
+    local separators = { ["│"] = true, ["├"] = true, ["┤"] = true }
+    if separators[vim.fn.strcharpart(header2, start_char, 1)] then
+      start_char = start_char + 1
+    end
+    if end_char > start_char and separators[vim.fn.strcharpart(header2, end_char - 1, 1)] then
+      end_char = end_char - 1
+    end
+  end
+  if end_char <= start_char then
+    return
+  end
+  local header_offset = layout.header_left_pad + (layout.margin and 1 or 0)
+  local ok, lines = pcall(vim.api.nvim_buf_get_lines, buffer, 1, 2, false)
+  if not ok or type(lines) ~= "table" then
+    return
+  end
+  local line = lines[1]
+  if type(line) ~= "string" then
+    return
+  end
+  local start_byte = vim.fn.byteidx(line, header_offset + start_char)
+  local end_byte = vim.fn.byteidx(line, header_offset + end_char)
+  if start_byte >= 0 and end_byte >= 0 and end_byte > start_byte then
+    pcall(vim.api.nvim_buf_set_extmark, buffer, namespace, 1, start_byte, {
+      end_row = 1,
+      end_col = end_byte,
+      hl_group = highlight,
+    })
+  end
+end
+
+function M._clear_swap_flash()
+  if swap_flash_timer ~= nil then
+    pcall(function()
+      swap_flash_timer:stop()
+      swap_flash_timer:close()
+    end)
+    swap_flash_timer = nil
+  end
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return
+  end
+  local ok, buffer = pcall(vim.api.nvim_win_get_buf, M.border_window)
+  if not ok or buffer == nil then
+    return
+  end
+  pcall(vim.api.nvim_buf_clear_namespace, buffer, SWAP_FLASH_NS, 0, -1)
+end
+
+---@param first integer first swapped slot (0-9)
+---@param second integer second swapped slot (0-9)
+---@param duration_ms integer|nil flash duration, defaults to SWAP_FLASH_MS (used by tests)
+function M._flash_swap_tabs(first, second, duration_ms)
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return
+  end
+  local layout = M.current_layout
+  if layout == nil then
+    return
+  end
+  local ok, buffer = pcall(vim.api.nvim_win_get_buf, M.border_window)
+  if not ok or buffer == nil then
+    return
+  end
+  M._clear_swap_flash()
+  ensure_drag_highlights()
+  highlight_tab_cell(buffer, layout, first, "TerminalsTabDragDest", SWAP_FLASH_NS)
+  highlight_tab_cell(buffer, layout, second, "TerminalsTabDragDest", SWAP_FLASH_NS)
+  local timeout = duration_ms or SWAP_FLASH_MS
+  local timer = vim.defer_fn(function()
+    swap_flash_timer = nil
+    if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+      return
+    end
+    local buffer_ok, live_buffer = pcall(vim.api.nvim_win_get_buf, M.border_window)
+    if not buffer_ok or live_buffer ~= buffer then
+      return
+    end
+    pcall(vim.api.nvim_buf_clear_namespace, buffer, SWAP_FLASH_NS, 0, -1)
+  end, timeout)
+  swap_flash_timer = timer
+end
+
+function M._clear_drag_preview()
+  M._drag_preview = nil
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return
+  end
+  local ok, buffer = pcall(vim.api.nvim_win_get_buf, M.border_window)
+  if not ok or buffer == nil then
+    return
+  end
+  pcall(vim.api.nvim_buf_clear_namespace, buffer, DRAG_PREVIEW_NS, 0, -1)
+end
+
+---@param source_id integer press tab id
+---@param dest_id integer|nil hovered tab id, nil when off the tab bar
+function M._show_drag_preview(source_id, dest_id)
+  local layout = M.current_layout
+  if layout == nil then
+    return
+  end
+  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
+    return
+  end
+  local ok, buffer = pcall(vim.api.nvim_win_get_buf, M.border_window)
+  if not ok or buffer == nil then
+    return
+  end
+  local current = M._drag_preview
+  if current ~= nil and current.source == source_id and current.dest == dest_id then
+    return
+  end
+  pcall(vim.api.nvim_buf_clear_namespace, buffer, DRAG_PREVIEW_NS, 0, -1)
+  ensure_drag_highlights()
+  if dest_id == nil then
+    highlight_tab_cell(buffer, layout, source_id, "TerminalsTabDragSource", DRAG_PREVIEW_NS)
+  elseif dest_id == source_id then
+    highlight_tab_cell(buffer, layout, source_id, "TerminalsTabDragDest", DRAG_PREVIEW_NS)
+  else
+    highlight_tab_cell(buffer, layout, source_id, "TerminalsTabDragSource", DRAG_PREVIEW_NS)
+    highlight_tab_cell(buffer, layout, dest_id, "TerminalsTabDragDest", DRAG_PREVIEW_NS)
+  end
+  M._drag_preview = { source = source_id, dest = dest_id }
+end
+
 ---@return number current monotonic time in milliseconds
 function M._now_ms()
   if vim.uv ~= nil and vim.uv.hrtime ~= nil then
@@ -492,33 +700,54 @@ function M.navigate(direction)
   end
 end
 
+---@param first integer first terminal slot (0-9)
+---@param second integer second terminal slot (0-9)
+function M.swap_terminals(first, second)
+  if type(first) ~= "number" or type(second) ~= "number" then
+    return
+  end
+  if first == second then
+    return
+  end
+  if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
+    return
+  end
+  local n1 = "term://Terminal-" .. first
+  local n2 = "term://Terminal-" .. second
+  local t1 = vim.fn.bufnr(n1)
+  local t2 = vim.fn.bufnr(n2)
+  if t1 == -1 and t2 == -1 then
+    M.activate_terminal({ id = second, toggle = false })
+    return
+  end
+  local function delete_leftover(name)
+    local leftover = vim.fn.bufnr(name)
+    if leftover ~= -1 and leftover ~= t1 and leftover ~= t2 then
+      vim.api.nvim_buf_delete(leftover, { force = true })
+    end
+  end
+  if t1 ~= -1 then
+    vim.api.nvim_buf_set_name(t1, "term://Terminal-Temporary")
+    delete_leftover(n1)
+  end
+  if t2 ~= -1 then
+    vim.api.nvim_buf_set_name(t2, n1)
+    delete_leftover(n2)
+  end
+  if t1 ~= -1 then
+    vim.api.nvim_buf_set_name(t1, n2)
+    delete_leftover("term://Terminal-Temporary")
+  end
+  M.activate_terminal({ id = second, toggle = false })
+  M._flash_swap_tabs(first, second)
+end
+
 ---@param direction 1|-1
 function M.move_terminal(direction)
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
     local current = tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10)
     local other = (current + direction + 10) % 10
-    local n1 = "term://Terminal-" .. current
-    local n2 = "term://Terminal-" .. other
-    local t1 = vim.fn.bufnr(n1)
-    local t2 = vim.fn.bufnr(n2)
-    if t1 ~= -1 then
-      vim.api.nvim_buf_set_name(t1, "term://Terminal-Temporary")
-      local old_buffer = vim.fn.bufnr(n1)
-      if old_buffer then
-        vim.api.nvim_buf_delete(old_buffer, { force = true })
-      end
-    end
-    if t2 ~= -1 then
-      vim.api.nvim_buf_set_name(t2, n1)
-    end
-    if t1 ~= -1 then
-      vim.api.nvim_buf_set_name(t1, n2)
-      local old_buffer = vim.fn.bufnr("term://Terminal-Temporary")
-      if old_buffer then
-        vim.api.nvim_buf_delete(old_buffer, { force = true })
-      end
-    end
-    M.activate_terminal({ id = other, toggle = false })
+    M.swap_terminals(current, other)
   elseif direction == 1 then
     vim.cmd.tabmove("+")
   elseif direction == -1 then
@@ -596,11 +825,17 @@ function M.leave_terminal()
   vim.keymap.set("t", "<LeftMouse>", function()
     M._handle_mouse_pressed()
   end, { buffer = true, silent = true })
+  vim.keymap.set("t", "<LeftDrag>", function()
+    M._handle_mouse_dragged()
+  end, { buffer = true, silent = true })
   vim.keymap.set("t", "<LeftRelease>", function()
     M._handle_mouse_released()
   end, { buffer = true, silent = true })
   vim.keymap.set("n", "<LeftMouse>", function()
     M._handle_mouse_pressed()
+  end, { buffer = true, silent = true })
+  vim.keymap.set("n", "<LeftDrag>", function()
+    M._handle_mouse_dragged()
   end, { buffer = true, silent = true })
   vim.keymap.set("n", "<LeftRelease>", function()
     M._handle_mouse_released()
@@ -792,6 +1027,9 @@ end
 
 function M.close_terminal()
   M.switching_terminals = true
+  M._mouse_press_tab_id = nil
+  M._drag_preview = nil
+  M._clear_swap_flash()
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
     vim.api.nvim_win_close(M.terminal_window, false)
   end
