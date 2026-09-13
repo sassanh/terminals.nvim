@@ -606,7 +606,7 @@ describe("tab click", function()
 
       vim.api.nvim_get_option_value = orig_get
 
-      assert.equals(1, logic.last_terminal)
+      assert.equals(2, logic.last_terminal)
       assert.equals(true, logic.terminal_state[first])
       assert.is_true(vim.api.nvim_win_is_valid(logic.terminal_window))
       assert.equals(second, vim.api.nvim_win_get_buf(logic.terminal_window))

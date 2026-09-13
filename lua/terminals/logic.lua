@@ -419,10 +419,6 @@ function M._save_current_terminal_state()
   local is_insert = mode == "t"
   local buffer = vim.api.nvim_win_get_buf(M.terminal_window)
   M.terminal_state[buffer] = is_insert
-  local name = vim.api.nvim_buf_get_name(buffer)
-  if name and vim.startswith(name, "term://Terminal-") then
-    M.last_terminal = tonumber(name:gsub("^term://Terminal%-", ""), 10)
-  end
 end
 
 ---@param mouse table mouse position returned by vim.fn.getmousepos()
@@ -875,6 +871,9 @@ function M.activate_terminal(opts)
   local append_mode = opts["append_mode"] == nil or opts["append_mode"]
   if opts["id"] ~= nil then
     id = opts["id"]
+  end
+  M.last_terminal = id
+  if opts["id"] ~= nil then
     if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
       local current = tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10)
       if current == id and toggle then
@@ -1069,10 +1068,6 @@ end
 ---@param state boolean
 function M.save_terminal_state(state)
   M.terminal_state[vim.fn.bufnr()] = state
-  local bufname = vim.fn.bufname()
-  if bufname ~= nil and vim.startswith(bufname, "term://Terminal-") then
-    M.last_terminal = tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10)
-  end
 end
 
 function M.handle_resize()
