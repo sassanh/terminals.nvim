@@ -268,13 +268,7 @@ function M.resolve_active_layout()
   return config.width, config.height, config.row, config.col
 end
 
-function M.cycle_layout()
-  local config = require("terminals").config
-  local layouts = config.layouts
-  if not layouts or #layouts == 0 then
-    return
-  end
-  M.layout_index = (M.layout_index % #layouts) + 1
+local function relayout_current_terminal()
   if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
     return
   end
@@ -288,6 +282,16 @@ function M.cycle_layout()
     append_mode = append_mode,
     relayout = true,
   })
+end
+
+function M.cycle_layout()
+  local config = require("terminals").config
+  local layouts = config.layouts
+  if not layouts or #layouts == 0 then
+    return
+  end
+  M.layout_index = (M.layout_index % #layouts) + 1
+  relayout_current_terminal()
 end
 
 ---@param width_config number|string|nil
@@ -1253,10 +1257,7 @@ function M.save_terminal_state(state)
 end
 
 function M.handle_resize()
-  if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    M.toggle_terminal()
-    M.toggle_terminal(false)
-  end
+  relayout_current_terminal()
 end
 
 return M

@@ -1,5 +1,5 @@
 *terminals.nvim.txt*
-                         For Neovim >= 0.8.0    Last change: 2026 September 13
+                         For Neovim >= 0.8.0    Last change: 2026 September 15
 
 ==============================================================================
 Table of Contents                           *terminals.nvim-table-of-contents*
