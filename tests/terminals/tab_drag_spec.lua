@@ -4,14 +4,12 @@ describe("tab drag", function()
   local original_columns
   local original_lines
   local original_getmousepos
-  local original_input_mouse
   local original_activate
 
   before_each(function()
     original_columns = vim.o.columns
     original_lines = vim.o.lines
     original_getmousepos = vim.fn.getmousepos
-    original_input_mouse = vim.api.nvim_input_mouse
     original_activate = logic.activate_terminal
     logic._mouse_press_tab_id = nil
     logic._drag_preview = nil
@@ -21,7 +19,6 @@ describe("tab drag", function()
     vim.o.columns = original_columns
     vim.o.lines = original_lines
     vim.fn.getmousepos = original_getmousepos
-    vim.api.nvim_input_mouse = original_input_mouse
     logic.activate_terminal = original_activate
     logic._mouse_press_tab_id = nil
     logic._drag_preview = nil
@@ -186,15 +183,17 @@ describe("tab drag", function()
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 2, wincol = wincol_for(layout, 2) }
       end
-      logic._handle_mouse_pressed()
+      assert.equals("", logic._handle_mouse_pressed())
       assert.equals(2, logic._mouse_press_tab_id)
       vim.wait(30)
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 2, wincol = wincol_for(layout, 7) }
       end
-      logic._handle_mouse_dragged()
+      assert.equals("", logic._handle_mouse_dragged())
+      vim.wait(30)
       assert.same({ source = 2, dest = 7 }, logic._drag_preview)
-      logic._handle_mouse_released()
+      assert.equals("", logic._handle_mouse_released())
+      vim.wait(30)
       assert.same({ 2, 7 }, swapped)
       assert.is_nil(logic._mouse_press_tab_id)
       assert.is_nil(logic._drag_preview)
@@ -226,13 +225,16 @@ describe("tab drag", function()
         return { winid = border_window, line = 2, wincol = wincol_for(layout, 7) }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = 7 }, logic._drag_preview)
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 2, wincol = wincol_for(layout, 2) }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = 2 }, logic._drag_preview)
       logic._handle_mouse_released()
+      vim.wait(30)
       assert.is_false(swapped)
       assert.is_nil(logic._mouse_press_tab_id)
       assert.is_nil(logic._drag_preview)
@@ -252,11 +254,13 @@ describe("tab drag", function()
         return { winid = 999999, line = 2, wincol = 10 }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = nil }, logic._drag_preview)
       local buffer = vim.api.nvim_win_get_buf(border_window)
       local namespace = vim.api.nvim_create_namespace("terminals_tab_drag")
       assert.is_true(#vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, { details = true }) >= 1)
       logic._handle_mouse_released()
+      vim.wait(30)
       assert.is_nil(logic._drag_preview)
     end)
 
@@ -289,12 +293,14 @@ describe("tab drag", function()
         return { winid = logic.terminal_window, line = 5, wincol = 5, screenrow = 20, screencol = screencol_for(7) }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = 7 }, logic._drag_preview)
       local buffer = vim.api.nvim_win_get_buf(border_window)
       local lines = vim.api.nvim_buf_get_lines(buffer, 1, 2, false)
       assert.is_true(lines[1]:find("[2<=>7]", 1, true) ~= nil)
       assert.is_true(lines[1]:find("[7<=>2]", 1, true) ~= nil)
       logic._handle_mouse_released()
+      vim.wait(30)
       assert.same({ 2, 7 }, swapped)
       assert.is_nil(logic._mouse_press_tab_id)
       assert.is_nil(logic._drag_preview)
@@ -315,43 +321,47 @@ describe("tab drag", function()
         return { winid = border_window, line = 20, wincol = 1, screenrow = 30, screencol = position[2] - 50 }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = 1 }, logic._drag_preview)
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 20, wincol = 1, screenrow = 30, screencol = position[2] + 500 }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       assert.same({ source = 2, dest = 0 }, logic._drag_preview)
       vim.fn.getmousepos = function()
         return { winid = 0, line = 0, wincol = 0, screenrow = 0, screencol = 0 }
       end
       assert.is_nil(logic.drag_tab_under_mouse())
       logic._handle_mouse_released()
+      vim.wait(30)
       assert.is_nil(logic._drag_preview)
     end)
 
-    it("forwards drags that did not start on a tab", function()
+    it("forwards clicks that did not start on a tab natively without feedkeys", function()
       local _, border_window = open_border(1)
-      local forwarded = {}
-      local original_feedkeys = vim.api.nvim_feedkeys
-      vim.api.nvim_feedkeys = function(keys, mode, escape)
-        table.insert(forwarded, { keys = keys, mode = mode })
-      end
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 5, wincol = 5, screenrow = 10, screencol = 10 }
       end
-      logic._handle_mouse_pressed()
+      assert.equals("<LeftMouse>", logic._handle_mouse_pressed())
       assert.is_nil(logic._mouse_press_tab_id)
       vim.fn.getmousepos = function()
         return { winid = 999999, line = 2, wincol = 10, screenrow = 11, screencol = 11 }
       end
-      logic._handle_mouse_dragged()
-      logic._handle_mouse_released()
-      vim.api.nvim_feedkeys = original_feedkeys
-      assert.equals(3, #forwarded)
-      for _, entry in ipairs(forwarded) do
-        assert.equals("n", entry.mode)
-        assert.is_true(#entry.keys > 0)
+      assert.equals("<LeftDrag>", logic._handle_mouse_dragged())
+      assert.equals("<LeftRelease>", logic._handle_mouse_released())
+      vim.wait(20)
+      assert.is_nil(logic._drag_preview)
+    end)
+
+    it("swallows mouse events with no window under the mouse", function()
+      open_border(1)
+      vim.fn.getmousepos = function()
+        return { winid = 0, line = 0, wincol = 0, screenrow = 0, screencol = 0 }
       end
+      assert.equals("", logic._handle_mouse_pressed())
+      assert.equals("", logic._handle_mouse_dragged())
+      assert.equals("", logic._handle_mouse_released())
     end)
   end)
 
@@ -423,7 +433,9 @@ describe("tab drag", function()
         return { winid = border_window, line = 2, wincol = wincol_for(layout, 3) }
       end
       logic._handle_mouse_dragged()
+      vim.wait(30)
       logic._handle_mouse_released()
+      vim.wait(30)
       logic._flash_swap_tabs = flash_original
       logic.activate_terminal = activate_original
       assert.same({ { 2, 3 }, { 2, 3 } }, flashed)
@@ -434,6 +446,8 @@ describe("tab drag", function()
     it("registers global and buffer-local drag mappings", function()
       require("terminals").setup()
       assert.not_equals("", vim.fn.maparg("<LeftDrag>", "n"))
+      local info = vim.fn.maparg("<LeftMouse>", "n", false, true)
+      assert.equals(1, info.expr, "global click mapping must be expr to forward natively")
       local buffer = vim.api.nvim_create_buf(false, true)
       vim.api.nvim_set_current_buf(buffer)
       logic.leave_terminal()
@@ -442,6 +456,9 @@ describe("tab drag", function()
         for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(buffer, mode)) do
           if keymap.lhs == "<LeftDrag>" then
             found[mode] = true
+          end
+          if keymap.lhs == "<LeftMouse>" then
+            assert.equals(1, keymap.expr, mode .. " click mapping must be expr")
           end
         end
       end

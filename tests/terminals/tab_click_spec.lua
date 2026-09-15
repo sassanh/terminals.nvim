@@ -510,7 +510,7 @@ describe("tab click", function()
       assert.is_nil(captured)
     end)
 
-    it("switches via the mouse expr mapping", function()
+    it("swallows the press on a tab through the expr mapping", function()
       require("terminals").setup()
       vim.o.columns = 200
       vim.o.lines = 40
@@ -542,12 +542,34 @@ describe("tab click", function()
         return { winid = border_window, line = 2, wincol = wincol }
       end
 
-      local result = logic._mouse_click_expr("<LeftMouse>")
+      local result = logic._handle_mouse_pressed()
       assert.equals("", result)
       vim.wait(20)
 
       -- scheduled activate should have fired
       assert.is_true(vim.api.nvim_win_is_valid(logic.terminal_window))
+    end)
+
+    it("forwards the press outside tabs natively without feedkeys", function()
+      require("terminals").setup()
+      vim.o.columns = 200
+      vim.o.lines = 40
+      local layout = logic.compute_window_layout(nil, nil, nil, nil, 1)
+      local border_buffer = vim.api.nvim_create_buf(false, true)
+      local border_window = vim.api.nvim_open_win(border_buffer, false, {
+        relative = "editor",
+        row = 0,
+        col = 0,
+        width = 20,
+        height = 5,
+      })
+      logic.border_window = border_window
+      logic.current_layout = layout
+      vim.fn.getmousepos = function()
+        return { winid = 999999, line = 5, wincol = 5 }
+      end
+      assert.equals("<LeftMouse>", logic._handle_mouse_pressed())
+      assert.is_nil(logic._mouse_press_tab_id)
     end)
   end)
 

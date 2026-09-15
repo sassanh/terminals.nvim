@@ -429,75 +429,81 @@ function M.handle_mouse_click()
   return M.handle_tab_click()
 end
 
----@param lhs string keycode to forward without remapping (avoids re-triggering this mapping)
-local function forward_mouse(lhs)
-  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(lhs, true, true, true), "n", false)
-end
-
+---@return string keycode to feed: "" to swallow, otherwise the original key for native handling.
+---Expr-safe: never changes buffers or windows synchronously (E565).
+---Tab-bar work is deferred with vim.schedule so fast scrolls and clicks
+---forward natively with their mouse position intact instead of being
+---re-injected through feedkeys (whose raw 0x80 0xFD bytes leak into the
+---pty as "ýK" when the typeahead fills up on fast scrolls).
 function M._handle_mouse_pressed()
   local id = M.border_tab_under_mouse()
   if id ~= nil then
     M._mouse_press_tab_id = id
-    M._clear_drag_preview()
     vim.schedule(function()
+      M._clear_drag_preview()
       M.activate_terminal({ id = id, toggle = false })
       if M._mouse_press_tab_id == id then
         M._show_drag_preview(id, id)
       end
     end)
-    return
+    return ""
   end
   M._mouse_press_tab_id = nil
-  M._clear_drag_preview()
+  if M._drag_preview ~= nil then
+    vim.schedule(function()
+      M._clear_drag_preview()
+    end)
+  end
   local mouse = vim.fn.getmousepos()
   if mouse.winid == 0 then
-    return
+    return ""
   end
-  forward_mouse("<LeftMouse>")
+  return "<LeftMouse>"
 end
 
+---@return string keycode to feed: "" to swallow, otherwise the original key for native handling.
 function M._handle_mouse_dragged()
   local press_id = M._mouse_press_tab_id
   if press_id == nil then
     local mouse = vim.fn.getmousepos()
     if mouse.winid == 0 then
-      return
+      return ""
     end
-    forward_mouse("<LeftDrag>")
-    return
+    return "<LeftDrag>"
   end
   local id = M.drag_tab_under_mouse()
-  M._show_drag_preview(press_id, id)
+  vim.schedule(function()
+    M._show_drag_preview(press_id, id)
+  end)
+  return ""
 end
 
+---@return string keycode to feed: "" to swallow, otherwise the original key for native handling.
 function M._handle_mouse_released()
   local press_id = M._mouse_press_tab_id
   if press_id ~= nil then
     local release_id = M.drag_tab_under_mouse()
     M._mouse_press_tab_id = nil
-    if release_id ~= nil and release_id ~= press_id then
-      M._clear_drag_preview()
-      M.swap_terminals(press_id, release_id)
-      return
-    end
-    M._clear_drag_preview()
-    return
+    vim.schedule(function()
+      if release_id ~= nil and release_id ~= press_id then
+        M._clear_drag_preview()
+        M.swap_terminals(press_id, release_id)
+      else
+        M._clear_drag_preview()
+      end
+    end)
+    return ""
   end
-  M._clear_drag_preview()
+  if M._drag_preview ~= nil then
+    vim.schedule(function()
+      M._clear_drag_preview()
+    end)
+  end
   local mouse = vim.fn.getmousepos()
   if mouse.winid == 0 then
-    return
+    return ""
   end
-  forward_mouse("<LeftRelease>")
-end
-
-function M._mouse_click_expr(lhs)
-  local id = M.border_tab_under_mouse()
-  if id == nil then
-    return vim.api.nvim_replace_termcodes(lhs, true, true, true)
-  end
-  M.activate_terminal({ id = id, toggle = false })
-  return ""
+  return "<LeftRelease>"
 end
 
 function M._save_current_terminal_state()
@@ -837,29 +843,33 @@ function M.handle_tab_scroll(direction, now_ms)
     return true
   end
   M._last_tab_scroll_ms = now
-  M.navigate(direction)
+  vim.schedule(function()
+    M.navigate(direction)
+  end)
   return true
 end
 
 ---@param wheel_action string one of "up", "down", "left", "right"
 ---@param direction 1|-1 navigation direction matching the wheel action
+---@return string keycode to feed: "" to swallow, otherwise the original wheel key for native handling.
 function M._handle_scroll(wheel_action, direction)
   if M.handle_tab_scroll(direction) then
-    return
+    return ""
   end
   local mouse = vim.fn.getmousepos()
   if mouse.winid == 0 then
-    return
+    return ""
   end
   if wheel_action == "up" then
-    forward_mouse("<ScrollWheelUp>")
+    return "<ScrollWheelUp>"
   elseif wheel_action == "down" then
-    forward_mouse("<ScrollWheelDown>")
+    return "<ScrollWheelDown>"
   elseif wheel_action == "left" then
-    forward_mouse("<ScrollWheelLeft>")
+    return "<ScrollWheelLeft>"
   elseif wheel_action == "right" then
-    forward_mouse("<ScrollWheelRight>")
+    return "<ScrollWheelRight>"
   end
+  return ""
 end
 
 function M.on_win_enter()
@@ -1011,47 +1021,47 @@ function M.leave_terminal()
   vim.keymap.set("t", config.keys.toggle_reverse_search, "<c-\\><c-n>?", { buffer = true })
   vim.keymap.set("t", config.keys.leave, "<c-\\><c-n>", { buffer = true, silent = true })
   vim.keymap.set("t", "<LeftMouse>", function()
-    M._handle_mouse_pressed()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_pressed()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<LeftDrag>", function()
-    M._handle_mouse_dragged()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_dragged()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<LeftRelease>", function()
-    M._handle_mouse_released()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_released()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<LeftMouse>", function()
-    M._handle_mouse_pressed()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_pressed()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<LeftDrag>", function()
-    M._handle_mouse_dragged()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_dragged()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<LeftRelease>", function()
-    M._handle_mouse_released()
-  end, { buffer = true, silent = true })
+    return M._handle_mouse_released()
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<ScrollWheelUp>", function()
-    M._handle_scroll("up", -1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("up", -1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<ScrollWheelDown>", function()
-    M._handle_scroll("down", 1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("down", 1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<ScrollWheelLeft>", function()
-    M._handle_scroll("left", -1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("left", -1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("t", "<ScrollWheelRight>", function()
-    M._handle_scroll("right", 1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("right", 1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<ScrollWheelUp>", function()
-    M._handle_scroll("up", -1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("up", -1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<ScrollWheelDown>", function()
-    M._handle_scroll("down", 1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("down", 1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<ScrollWheelLeft>", function()
-    M._handle_scroll("left", -1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("left", -1)
+  end, { buffer = true, silent = true, expr = true })
   vim.keymap.set("n", "<ScrollWheelRight>", function()
-    M._handle_scroll("right", 1)
-  end, { buffer = true, silent = true })
+    return M._handle_scroll("right", 1)
+  end, { buffer = true, silent = true, expr = true })
 end
 
 --- @param opts ActivateTerminalOptions|nil

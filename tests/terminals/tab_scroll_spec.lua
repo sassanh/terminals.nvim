@@ -5,14 +5,12 @@ describe("tab scroll", function()
   local original_lines
   local original_getmousepos
   local original_navigate
-  local original_input_mouse
 
   before_each(function()
     original_columns = vim.o.columns
     original_lines = vim.o.lines
     original_getmousepos = vim.fn.getmousepos
     original_navigate = logic.navigate
-    original_input_mouse = vim.api.nvim_input_mouse
     logic.tab_scroll_cooldown_ms = 150
     logic._last_tab_scroll_ms = nil
   end)
@@ -22,7 +20,6 @@ describe("tab scroll", function()
     vim.o.lines = original_lines
     vim.fn.getmousepos = original_getmousepos
     logic.navigate = original_navigate
-    vim.api.nvim_input_mouse = original_input_mouse
     logic.tab_scroll_cooldown_ms = 150
     logic._last_tab_scroll_ms = nil
     if logic.border_window ~= nil and vim.api.nvim_win_is_valid(logic.border_window) then
@@ -107,8 +104,10 @@ describe("tab scroll", function()
         return { winid = border_window, line = 2, wincol = 10 }
       end
       assert.is_true(logic.handle_tab_scroll(1, 1000))
+      vim.wait(30)
       assert.same({ 1 }, directions)
       assert.is_true(logic.handle_tab_scroll(-1, 2000))
+      vim.wait(30)
       assert.same({ 1, -1 }, directions)
     end)
 
@@ -123,8 +122,10 @@ describe("tab scroll", function()
       end
       assert.is_true(logic.handle_tab_scroll(1, 1000))
       assert.is_true(logic.handle_tab_scroll(1, 1050))
+      vim.wait(30)
       assert.same({ 1 }, directions)
       assert.is_true(logic.handle_tab_scroll(1, 1000 + logic.tab_scroll_cooldown_ms))
+      vim.wait(30)
       assert.same({ 1, 1 }, directions)
     end)
 
@@ -138,6 +139,7 @@ describe("tab scroll", function()
         return { winid = 999999, line = 2, wincol = 10 }
       end
       assert.is_false(logic.handle_tab_scroll(1, 1000))
+      vim.wait(20)
       assert.is_false(called)
     end)
   end)
@@ -149,41 +151,38 @@ describe("tab scroll", function()
       logic.navigate = function()
         navigations = navigations + 1
       end
-      local forwarded = 0
-      local original_feedkeys = vim.api.nvim_feedkeys
-      vim.api.nvim_feedkeys = function()
-        forwarded = forwarded + 1
-      end
       vim.fn.getmousepos = function()
         return { winid = border_window, line = 2, wincol = 10, screenrow = 5, screencol = 10 }
       end
-      logic._handle_scroll("up", -1)
-      logic._handle_scroll("up", -1)
-      vim.api.nvim_feedkeys = original_feedkeys
+      assert.equals("", logic._handle_scroll("up", -1))
+      assert.equals("", logic._handle_scroll("up", -1))
+      vim.wait(30)
       assert.equals(1, navigations)
-      assert.equals(0, forwarded)
     end)
 
-    it("forwards scrolls outside the tab bar", function()
+    it("forwards scrolls outside the tab bar natively without feedkeys", function()
       open_border()
       local navigations = 0
       logic.navigate = function()
         navigations = navigations + 1
       end
-      local forwarded = nil
-      local original_feedkeys = vim.api.nvim_feedkeys
-      vim.api.nvim_feedkeys = function(keys, mode, escape)
-        forwarded = { keys = keys, mode = mode }
-      end
       vim.fn.getmousepos = function()
         return { winid = 999999, line = 2, wincol = 10, screenrow = 7, screencol = 12 }
       end
-      logic._handle_scroll("down", 1)
-      vim.api.nvim_feedkeys = original_feedkeys
+      assert.equals("<ScrollWheelDown>", logic._handle_scroll("down", 1))
+      assert.equals("<ScrollWheelUp>", logic._handle_scroll("up", -1))
+      assert.equals("<ScrollWheelLeft>", logic._handle_scroll("left", -1))
+      assert.equals("<ScrollWheelRight>", logic._handle_scroll("right", 1))
+      vim.wait(20)
       assert.equals(0, navigations)
-      assert.is_not_nil(forwarded)
-      assert.equals("n", forwarded.mode)
-      assert.is_true(forwarded.keys:find("ScrollWheelDown") ~= nil or #forwarded.keys > 0)
+    end)
+
+    it("swallows scrolls with no window under the mouse", function()
+      open_border()
+      vim.fn.getmousepos = function()
+        return { winid = 0, line = 0, wincol = 0, screenrow = 0, screencol = 0 }
+      end
+      assert.equals("", logic._handle_scroll("up", -1))
     end)
   end)
 
@@ -192,6 +191,8 @@ describe("tab scroll", function()
       require("terminals").setup()
       for _, lhs in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>", "<ScrollWheelLeft>", "<ScrollWheelRight>" }) do
         assert.not_equals("", vim.fn.maparg(lhs, "n"), "missing global mapping for " .. lhs)
+        local info = vim.fn.maparg(lhs, "n", false, true)
+        assert.equals(1, info.expr, "global mapping for " .. lhs .. " must be expr to forward natively")
       end
       local buffer = vim.api.nvim_create_buf(false, true)
       vim.api.nvim_set_current_buf(buffer)
@@ -205,6 +206,13 @@ describe("tab scroll", function()
       for _, lhs in ipairs({ "<ScrollWheelUp>", "<ScrollWheelDown>", "<ScrollWheelLeft>", "<ScrollWheelRight>" }) do
         assert.is_true(modes.t[lhs] == true, "missing t mapping for " .. lhs)
         assert.is_true(modes.n[lhs] == true, "missing n mapping for " .. lhs)
+      end
+      for _, mode in ipairs({ "t", "n" }) do
+        for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(buffer, mode)) do
+          if keymap.lhs == "<ScrollWheelUp>" then
+            assert.equals(1, keymap.expr, mode .. " scroll mapping must be expr")
+          end
+        end
       end
     end)
   end)
