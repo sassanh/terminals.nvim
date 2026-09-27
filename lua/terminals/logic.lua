@@ -685,6 +685,28 @@ local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace)
   if type(line) ~= "string" then
     return
   end
+  local cell_text = vim.fn.strcharpart(line, header_offset + start_char, end_char - start_char)
+  if type(cell_text) == "string" then
+    local cell_length = vim.fn.strcharlen(cell_text)
+    local first_text = nil
+    local last_text = nil
+    for index = 0, cell_length - 1 do
+      if vim.fn.strcharpart(cell_text, index, 1) ~= " " then
+        if first_text == nil then
+          first_text = index
+        end
+        last_text = index
+      end
+    end
+    if first_text == nil or last_text == nil then
+      return
+    end
+    start_char = start_char + first_text
+    end_char = start_char + (last_text - first_text + 1)
+  end
+  if end_char <= start_char then
+    return
+  end
   local start_byte = vim.fn.byteidx(line, header_offset + start_char)
   local end_byte = vim.fn.byteidx(line, header_offset + end_char)
   if start_byte >= 0 and end_byte >= 0 and end_byte > start_byte then

@@ -1,5 +1,5 @@
 *terminals.nvim.txt*
-                         For Neovim >= 0.8.0    Last change: 2026 September 15
+                         For Neovim >= 0.8.0    Last change: 2026 September 28
 
 ==============================================================================
 Table of Contents                           *terminals.nvim-table-of-contents*
@@ -161,7 +161,7 @@ responsive sizing formula:
 
 >lua
     local terminals = require("terminals")
-    
+
     require("terminals").setup({
       width = terminals.default_width,
       height = terminals.default_height,
@@ -188,7 +188,7 @@ preset.
 
 >lua
     local terminals = require("terminals")
-    
+
     require("terminals").setup({
       keys = {
         cycle_layout = "<D-m>",
