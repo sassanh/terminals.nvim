@@ -141,40 +141,17 @@ end
 
 ---@param id integer primary bracketed tab id
 ---@param tab_padding integer
----@param extra_bracket integer|table|nil additional bracketed tab id(s) shown during drag
 ---@return string, string, string
-local function build_tab_headers(id, tab_padding, extra_bracket)
+local function build_tab_headers(id, tab_padding)
   local header1 = "╭"
   local header2 = "┤"
   local header3 = "╰"
   local pad = (" "):rep(tab_padding)
   local dashes = ("─"):rep(tab_padding * 2 + 3)
-  local function is_bracketed(digit)
-    if digit == id then
-      return true
-    end
-    if extra_bracket == nil then
-      return false
-    end
-    if type(extra_bracket) == "number" then
-      return digit == extra_bracket
-    end
-    if type(extra_bracket) == "table" then
-      if extra_bracket[digit] then
-        return true
-      end
-      for _, value in pairs(extra_bracket) do
-        if value == digit then
-          return true
-        end
-      end
-    end
-    return false
-  end
   for i = 1, 10 do
     local digit = i % 10
     header1 = header1 .. dashes
-    header2 = header2 .. pad .. (is_bracketed(digit) and "[" .. digit .. "]" or " " .. digit .. " ") .. pad
+    header2 = header2 .. pad .. (digit == id and "[" .. digit .. "]" or " " .. digit .. " ") .. pad
     header3 = header3 .. dashes
     header1 = header1 .. (i < 10 and "┬" or "╮")
     header2 = header2 .. (i < 10 and "│" or "├")
@@ -278,43 +255,40 @@ end
 ---@param layout table layout returned by compute_window_layout
 ---@param source_id integer press tab id
 ---@param dest_id integer|nil hovered tab id
----@return string truncated header2 showing [source<=>dest] during drag
+---@return string truncated header2 showing the directional swap labels during drag
 local function drag_preview_header2(layout, source_id, dest_id)
   local available_width = layout.width - (layout.margin and 2 or 0)
-  local header1, full_header2, header3 = build_tab_headers(source_id, layout.tab_padding, nil)
+  local header1, full_header2, header3 = build_tab_headers(source_id, layout.tab_padding)
   if dest_id ~= nil and dest_id ~= source_id then
     local tab_padding = layout.tab_padding
-    -- Bracketed swap labels, keeping cell width stable.
-    -- Normal cell is pad + 3 + pad; bracketed label is (pad-2) + 7 + (pad-2).
-    -- With padding 1 there is no room for brackets, so fall back to plain labels.
-    local source_label, dest_label, side
-    if tab_padding >= 2 then
-      side = (" "):rep(tab_padding - 2)
-      source_label = "[" .. source_id .. "<=>" .. dest_id .. "]"
-      dest_label = "[" .. dest_id .. "<=>" .. source_id .. "]"
-    elseif tab_padding == 1 then
-      side = ""
-      source_label = source_id .. "<=>" .. dest_id
-      dest_label = dest_id .. "<=>" .. source_id
-    end
-    if source_label ~= nil then
-      local pad = (" "):rep(tab_padding)
-      local rebuilt = "┤"
-      for i = 1, 10 do
-        local digit = i % 10
-        if digit == source_id then
-          rebuilt = rebuilt .. side .. source_label .. side
-        elseif digit == dest_id then
-          rebuilt = rebuilt .. side .. dest_label .. side
-        else
-          rebuilt = rebuilt .. pad .. " " .. digit .. " " .. pad
-        end
-        rebuilt = rebuilt .. (i < 10 and "│" or "├")
-      end
-      full_header2 = rebuilt
+    -- Directional swap labels, keeping cell width stable. The arrow points at
+    -- the cell it is drawn in, so that cell's own digit sits on its right.
+    -- Normal cell is pad + 3 + pad; the bracketed label is (pad-1) + 5 + (pad-1),
+    -- which fits every padded cell, so only padding 0 drops the brackets.
+    local source_cell_label, dest_cell_label, side
+    if tab_padding >= 1 then
+      side = (" "):rep(tab_padding - 1)
+      source_cell_label = "[" .. dest_id .. "→" .. source_id .. "]"
+      dest_cell_label = "[" .. source_id .. "→" .. dest_id .. "]"
     else
-      header1, full_header2, header3 = build_tab_headers(source_id, tab_padding, dest_id)
+      side = ""
+      source_cell_label = dest_id .. "→" .. source_id
+      dest_cell_label = source_id .. "→" .. dest_id
     end
+    local pad = (" "):rep(tab_padding)
+    local rebuilt = "┤"
+    for i = 1, 10 do
+      local digit = i % 10
+      if digit == source_id then
+        rebuilt = rebuilt .. side .. source_cell_label .. side
+      elseif digit == dest_id then
+        rebuilt = rebuilt .. side .. dest_cell_label .. side
+      else
+        rebuilt = rebuilt .. pad .. " " .. digit .. " " .. pad
+      end
+      rebuilt = rebuilt .. (i < 10 and "│" or "├")
+    end
+    full_header2 = rebuilt
   end
   local preview_hit_map = build_tab_hit_map(layout.tab_padding)
   _, full_header2, _ =
