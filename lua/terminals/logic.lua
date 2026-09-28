@@ -994,14 +994,167 @@ function M.move_terminal(direction)
   end
 end
 
+---Single source for every action the plugin maps. The global and the
+---terminal-buffer registrations differ only in which modes they attach
+---these handlers to.
+local keymap_handlers = {
+  go_left = function()
+    M.navigate(-1)
+  end,
+  go_right = function()
+    M.navigate(1)
+  end,
+  move_left = function()
+    M.move_terminal(-1)
+  end,
+  move_right = function()
+    M.move_terminal(1)
+  end,
+  toggle = function()
+    M.toggle_terminal()
+  end,
+  cycle_layout = function()
+    M.cycle_layout()
+  end,
+  focus = function()
+    M.enter_terminal()
+    vim.cmd.startinsert()
+  end,
+  mouse_pressed = function()
+    return M._handle_mouse_pressed()
+  end,
+  mouse_dragged = function()
+    return M._handle_mouse_dragged()
+  end,
+  mouse_released = function()
+    return M._handle_mouse_released()
+  end,
+  scroll_up = function()
+    return M._handle_scroll("up", -1)
+  end,
+  scroll_down = function()
+    return M._handle_scroll("down", 1)
+  end,
+  scroll_left = function()
+    return M._handle_scroll("left", -1)
+  end,
+  scroll_right = function()
+    return M._handle_scroll("right", 1)
+  end,
+}
+
+---@class KeymapDefinition
+---@field modes string[] modes the mapping applies to
+---@field lhs string
+---@field rhs string|function
+---@field expr? boolean
+
+---Applies keymap definitions globally or to the current buffer.
+---@param definitions KeymapDefinition[]
+---@param buffer boolean|nil true maps the current buffer, nil maps globally
+local function register_keymaps(definitions, buffer)
+  for _, definition in ipairs(definitions) do
+    vim.keymap.set(definition.modes, definition.lhs, definition.rhs, {
+      buffer = buffer,
+      silent = true,
+      expr = definition.expr or false,
+    })
+  end
+end
+
+---Slot mappings for the modifier digit keys.
+---@param config TerminalsConfig
+---@param mode string
+---@return KeymapDefinition[]
+local function slot_keymap_definitions(config, mode)
+  local definitions = {}
+  for slot = 0, 9 do
+    definitions[#definitions + 1] = {
+      modes = { mode },
+      lhs = ("<%s-%s>"):format(config.keys.modifier, slot),
+      rhs = function()
+        M.activate_terminal({ id = slot })
+      end,
+    }
+  end
+  return definitions
+end
+
+---Mouse and scroll-wheel mappings for the given modes.
+---@param modes string[]
+---@return KeymapDefinition[]
+local function mouse_keymap_definitions(modes)
+  return {
+    { modes = modes, lhs = "<LeftMouse>", rhs = keymap_handlers.mouse_pressed, expr = true },
+    { modes = modes, lhs = "<LeftDrag>", rhs = keymap_handlers.mouse_dragged, expr = true },
+    { modes = modes, lhs = "<LeftRelease>", rhs = keymap_handlers.mouse_released, expr = true },
+    { modes = modes, lhs = "<ScrollWheelUp>", rhs = keymap_handlers.scroll_up, expr = true },
+    { modes = modes, lhs = "<ScrollWheelDown>", rhs = keymap_handlers.scroll_down, expr = true },
+    { modes = modes, lhs = "<ScrollWheelLeft>", rhs = keymap_handlers.scroll_left, expr = true },
+    { modes = modes, lhs = "<ScrollWheelRight>", rhs = keymap_handlers.scroll_right, expr = true },
+  }
+end
+
+---Global keymaps, registered once by setup().
+---@param config TerminalsConfig
+---@return KeymapDefinition[]
+local function global_keymap_definitions(config)
+  local definitions = {
+    { modes = { "n" }, lhs = config.keys.go_left, rhs = keymap_handlers.go_left },
+    { modes = { "n" }, lhs = config.keys.go_right, rhs = keymap_handlers.go_right },
+    { modes = { "n" }, lhs = config.keys.move_left, rhs = keymap_handlers.move_left },
+    { modes = { "n" }, lhs = config.keys.move_right, rhs = keymap_handlers.move_right },
+    { modes = { "n" }, lhs = config.keys.toggle_reverse_search, rhs = "?" },
+    { modes = { "i" }, lhs = config.keys.toggle_reverse_search, rhs = "<c-c>?" },
+    { modes = { "n" }, lhs = config.keys.toggle, rhs = keymap_handlers.toggle },
+  }
+  vim.list_extend(definitions, slot_keymap_definitions(config, "n"))
+  vim.list_extend(definitions, mouse_keymap_definitions({ "n", "i", "v" }))
+  return definitions
+end
+
+---Buffer-local keymaps for terminal buffers, registered by
+---leave_terminal() on TermOpen and when input mode is left.
+---@param config TerminalsConfig
+---@return KeymapDefinition[]
+local function terminal_keymap_definitions(config)
+  -- Preserved keys come first so an overlapping built-in key keeps its
+  -- built-in behavior.
+  local definitions = {}
+  for _, key in ipairs(config.preserved_keys) do
+    definitions[#definitions + 1] = { modes = { "t" }, lhs = key, rhs = ("<c-\\><c-n>%s"):format(key) }
+  end
+  vim.list_extend(definitions, {
+    { modes = { "t" }, lhs = config.keys.focus, rhs = keymap_handlers.focus },
+    { modes = { "t" }, lhs = config.keys.paste, rhs = "<c-\\><c-n>pa" },
+    { modes = { "t" }, lhs = config.keys.paste_in_place, rhs = "<c-\\><c-n>Pa" },
+    { modes = { "t" }, lhs = config.keys.go_left, rhs = keymap_handlers.go_left },
+    { modes = { "t" }, lhs = config.keys.go_right, rhs = keymap_handlers.go_right },
+    { modes = { "t" }, lhs = config.keys.move_left, rhs = keymap_handlers.move_left },
+    { modes = { "t" }, lhs = config.keys.move_right, rhs = keymap_handlers.move_right },
+    { modes = { "t" }, lhs = config.keys.toggle, rhs = keymap_handlers.toggle },
+    { modes = { "t" }, lhs = config.keys.cycle_layout, rhs = keymap_handlers.cycle_layout },
+    { modes = { "n" }, lhs = config.keys.cycle_layout, rhs = keymap_handlers.cycle_layout },
+    { modes = { "t" }, lhs = config.keys.toggle_reverse_search, rhs = "<c-\\><c-n>?" },
+    { modes = { "t" }, lhs = config.keys.leave, rhs = "<c-\\><c-n>" },
+  })
+  vim.list_extend(definitions, slot_keymap_definitions(config, "t"))
+  vim.list_extend(definitions, mouse_keymap_definitions({ "t", "n" }))
+  return definitions
+end
+
+---Registers the plugin's global keymaps. Called by setup().
+function M.register_global_keymaps()
+  register_keymaps(global_keymap_definitions(require("terminals").config), nil)
+end
+
 function M.enter_terminal()
   local config = require("terminals").config
-  for char = 1, 126 do
-    pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(char) })
+  for codepoint = 1, 126 do
     vim.keymap.set(
       "t",
-      ("<d-char-%s>"):format(char),
-      ("<char-24><char-64>s<char-%s>"):format(char),
+      ("<d-char-%s>"):format(codepoint),
+      ("<char-24><char-64>s<char-%s>"):format(codepoint),
       { noremap = true, buffer = true }
     )
   end
@@ -1012,93 +1165,11 @@ function M.enter_terminal()
 end
 
 function M.leave_terminal()
-  local config = require("terminals").config
-
-  for char = 1, 126 do
-    pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(char) })
-  end
-  for _, key in ipairs(config.preserved_keys) do
-    vim.keymap.set("t", key, ("<c-\\><c-n>%s"):format(key), { buffer = true, silent = true })
+  for codepoint = 1, 126 do
+    pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(codepoint) })
   end
 
-  vim.keymap.set("t", config.keys.focus, function()
-    M.enter_terminal()
-    vim.cmd.startinsert()
-  end, { buffer = true, silent = true })
-
-  vim.keymap.set("t", config.keys.paste, "<c-\\><c-n>pa", { buffer = true })
-  vim.keymap.set("t", config.keys.paste_in_place, "<c-\\><c-n>Pa", { buffer = true })
-
-  vim.keymap.set("t", config.keys.go_left, function()
-    M.navigate(-1)
-  end, { buffer = true, silent = true })
-  vim.keymap.set("t", config.keys.go_right, function()
-    M.navigate(1)
-  end, { buffer = true, silent = true })
-  vim.keymap.set("t", config.keys.move_left, function()
-    M.move_terminal(-1)
-  end, { buffer = true, silent = true })
-  vim.keymap.set("t", config.keys.move_right, function()
-    M.move_terminal(1)
-  end, { buffer = true, silent = true })
-  for i = 0, 9 do
-    vim.keymap.set("t", ("<%s-%s>"):format(config.keys.modifier, i), function()
-      M.activate_terminal({ id = i })
-    end, { buffer = true, silent = true })
-  end
-  vim.keymap.set("t", config.keys.toggle, function()
-    M.toggle_terminal()
-  end, { buffer = true, silent = true })
-  vim.keymap.set("t", config.keys.cycle_layout, function()
-    M.cycle_layout()
-  end, { buffer = true, silent = true })
-  vim.keymap.set("n", config.keys.cycle_layout, function()
-    M.cycle_layout()
-  end, { buffer = true, silent = true })
-  vim.keymap.set("t", config.keys.toggle_reverse_search, "<c-\\><c-n>?", { buffer = true })
-  vim.keymap.set("t", config.keys.leave, "<c-\\><c-n>", { buffer = true, silent = true })
-  vim.keymap.set("t", "<LeftMouse>", function()
-    return M._handle_mouse_pressed()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<LeftDrag>", function()
-    return M._handle_mouse_dragged()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<LeftRelease>", function()
-    return M._handle_mouse_released()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<LeftMouse>", function()
-    return M._handle_mouse_pressed()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<LeftDrag>", function()
-    return M._handle_mouse_dragged()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<LeftRelease>", function()
-    return M._handle_mouse_released()
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<ScrollWheelUp>", function()
-    return M._handle_scroll("up", -1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<ScrollWheelDown>", function()
-    return M._handle_scroll("down", 1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<ScrollWheelLeft>", function()
-    return M._handle_scroll("left", -1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("t", "<ScrollWheelRight>", function()
-    return M._handle_scroll("right", 1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<ScrollWheelUp>", function()
-    return M._handle_scroll("up", -1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<ScrollWheelDown>", function()
-    return M._handle_scroll("down", 1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<ScrollWheelLeft>", function()
-    return M._handle_scroll("left", -1)
-  end, { buffer = true, silent = true, expr = true })
-  vim.keymap.set("n", "<ScrollWheelRight>", function()
-    return M._handle_scroll("right", 1)
-  end, { buffer = true, silent = true, expr = true })
+  register_keymaps(terminal_keymap_definitions(require("terminals").config), true)
 end
 
 ---Runs an operation while window-leave events are treated as terminal

@@ -93,53 +93,7 @@ M.setup = function(args)
     callback = logic.handle_resize,
   })
 
-  vim.keymap.set("n", M.config.keys.go_left, function()
-    logic.navigate(-1)
-  end, { silent = true })
-  vim.keymap.set("n", M.config.keys.go_right, function()
-    logic.navigate(1)
-  end, { silent = true })
-  vim.keymap.set("n", M.config.keys.move_left, function()
-    logic.move_terminal(-1)
-  end, { silent = true })
-  vim.keymap.set("n", M.config.keys.move_right, function()
-    logic.move_terminal(1)
-  end, { silent = true })
-
-  vim.keymap.set("n", M.config.keys.toggle_reverse_search, "?")
-  vim.keymap.set("i", M.config.keys.toggle_reverse_search, "<c-c>?")
-
-  vim.keymap.set("n", M.config.keys.toggle, function()
-    logic.toggle_terminal()
-  end, { silent = true })
-
-  for i = 0, 9 do
-    vim.keymap.set("n", ("<%s-%s>"):format(M.config.keys.modifier, i), function()
-      require("terminals.logic").activate_terminal({ id = i })
-    end, { silent = true })
-  end
-
-  vim.keymap.set({ "n", "i", "v" }, "<LeftMouse>", function()
-    return require("terminals.logic")._handle_mouse_pressed()
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<LeftDrag>", function()
-    return require("terminals.logic")._handle_mouse_dragged()
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<LeftRelease>", function()
-    return require("terminals.logic")._handle_mouse_released()
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<ScrollWheelUp>", function()
-    return require("terminals.logic")._handle_scroll("up", -1)
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<ScrollWheelDown>", function()
-    return require("terminals.logic")._handle_scroll("down", 1)
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<ScrollWheelLeft>", function()
-    return require("terminals.logic")._handle_scroll("left", -1)
-  end, { silent = true, expr = true })
-  vim.keymap.set({ "n", "i", "v" }, "<ScrollWheelRight>", function()
-    return require("terminals.logic")._handle_scroll("right", 1)
-  end, { silent = true, expr = true })
+  logic.register_global_keymaps()
 end
 
 --- @param opts ActivateTerminalOptions|nil
