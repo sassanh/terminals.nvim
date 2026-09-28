@@ -64,6 +64,7 @@ M.config = config
 ---@param args TerminalsConfig?
 M.setup = function(args)
   M.config = vim.tbl_deep_extend("force", M.config, args or {})
+  M.group = vim.api.nvim_create_augroup("Terminal", { clear = true })
 
   vim.api.nvim_create_autocmd("TermOpen", {
     group = M.group,
@@ -140,8 +141,6 @@ M.setup = function(args)
     return require("terminals.logic")._handle_scroll("right", 1)
   end, { silent = true, expr = true })
 end
-
-M.group = vim.api.nvim_create_augroup("Terminal", { clear = true })
 
 --- @param opts ActivateTerminalOptions|nil
 function M.activate_terminal(opts)

@@ -1003,7 +1003,7 @@ function M.enter_terminal()
       { noremap = true, buffer = true }
     )
   end
-  vim.keymap.set("t", ("<%s-s-i>"):format(config.keys.modifier), function()
+  vim.keymap.set("t", config.keys.unfocus, function()
     M.leave_terminal()
     vim.cmd.startinsert()
   end, { buffer = true })
@@ -1015,12 +1015,8 @@ function M.leave_terminal()
   for char = 1, 126 do
     pcall(vim.keymap.del, { "t", ("<d-char-%s>"):format(char) })
   end
-  for key, value in ipairs(config.preserved_keys) do
-    if type(key) == "string" then
-      vim.keymap.set("t", key, ("<c-\\><c-n>%s"):format(value), { buffer = true, silent = true })
-    else
-      vim.keymap.set("t", value, ("<c-\\><c-n>%s"):format(value), { buffer = true, silent = true })
-    end
+  for _, key in ipairs(config.preserved_keys) do
+    vim.keymap.set("t", key, ("<c-\\><c-n>%s"):format(key), { buffer = true, silent = true })
   end
 
   vim.keymap.set("t", config.keys.focus, function()
