@@ -232,6 +232,42 @@ local function header2_border_line(layout, header2)
   return ("─"):rep(left_pad) .. header2 .. ("─"):rep(right_pad)
 end
 
+---Fills the border buffer with the tab bar and window frame from layout.
+---@param buffer integer border buffer id
+---@param layout TerminalLayout layout returned by compute_window_layout
+local function render_border_buffer(buffer, layout)
+  local width = layout.width
+  local height = layout.height
+  local header1 = layout.header1
+  local header2 = layout.header2
+  local header3 = layout.header3
+  local left_pad = layout.header_left_pad
+  local right_pad = layout.header_right_pad
+  if layout.margin then
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, true, { (" "):rep(left_pad + 1) .. header1 .. (" "):rep(right_pad + 1) })
+    vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { header2_border_line(layout, header2) })
+    vim.api.nvim_buf_set_lines(
+      buffer,
+      -1,
+      -1,
+      true,
+      { "│" .. (" "):rep(left_pad) .. header3 .. (" "):rep(right_pad) .. "│" }
+    )
+    for _ = 1, height - 4 do
+      vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { "│" .. (" "):rep(width - 2) .. "│" })
+    end
+    vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { "╰" .. ("─"):rep(width - 2) .. "╯" })
+  else
+    vim.api.nvim_buf_set_lines(buffer, 0, -1, true, { (" "):rep(left_pad) .. header1 .. (" "):rep(right_pad) })
+    vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { header2_border_line(layout, header2) })
+    vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { (" "):rep(left_pad) .. header3 .. (" "):rep(right_pad) })
+    for _ = 1, height - 4 do
+      vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { " " })
+    end
+    vim.api.nvim_buf_set_lines(buffer, -1, -1, true, { ("─"):rep(width) })
+  end
+end
+
 ---@param buffer integer border buffer id
 ---@param layout table layout returned by compute_window_layout
 ---@param header2 string truncated header2 to show
@@ -1193,11 +1229,6 @@ local function activate_terminal_impl(opts)
   local row = layout.row
   local col = layout.col
   local margin = layout.margin
-  local header1 = layout.header1
-  local header2 = layout.header2
-  local header3 = layout.header3
-  local left_pad = layout.header_left_pad
-  local right_pad = layout.header_right_pad
 
   local bufnr = vim.fn.bufnr(buffer_name)
   if bufnr ~= -1 then
@@ -1230,31 +1261,7 @@ local function activate_terminal_impl(opts)
     vim.api.nvim_set_option_value("signcolumn", "no", { win = M.border_window })
     vim.api.nvim_set_option_value("winhighlight", "Normal:WindowBorder", { win = M.border_window })
   end
-  local l1 = left_pad
-  local l2 = right_pad
-  if margin then
-    vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1 + 1) .. header1 .. (" "):rep(l2 + 1) })
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { header2_border_line(layout, header2) })
-    vim.api.nvim_buf_set_lines(
-      border_buffer,
-      -1,
-      -1,
-      true,
-      { "│" .. (" "):rep(l1) .. header3 .. (" "):rep(l2) .. "│" }
-    )
-    for _ = 1, height - 4 do
-      vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "│" .. (" "):rep(width - 2) .. "│" })
-    end
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { "╰" .. ("─"):rep(width - 2) .. "╯" })
-  else
-    vim.api.nvim_buf_set_lines(border_buffer, 0, -1, true, { (" "):rep(l1) .. header1 .. (" "):rep(l2) })
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { header2_border_line(layout, header2) })
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { (" "):rep(l1) .. header3 .. (" "):rep(l2) })
-    for _ = 1, height - 4 do
-      vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { " " })
-    end
-    vim.api.nvim_buf_set_lines(border_buffer, -1, -1, true, { ("─"):rep(width) })
-  end
+  render_border_buffer(border_buffer, layout)
 
   win_opts = {
     relative = "editor",
