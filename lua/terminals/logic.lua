@@ -960,30 +960,30 @@ function M.swap_terminals(first, second)
   if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
     return
   end
-  local n1 = "term://Terminal-" .. first
-  local n2 = "term://Terminal-" .. second
-  local t1 = vim.fn.bufnr(n1)
-  local t2 = vim.fn.bufnr(n2)
-  if t1 == -1 and t2 == -1 then
+  local first_name = "term://Terminal-" .. first
+  local second_name = "term://Terminal-" .. second
+  local first_buffer = vim.fn.bufnr(first_name)
+  local second_buffer = vim.fn.bufnr(second_name)
+  if first_buffer == -1 and second_buffer == -1 then
     M.activate_terminal({ id = second, toggle = false })
     return
   end
   local function delete_leftover(name)
     local leftover = vim.fn.bufnr(name)
-    if leftover ~= -1 and leftover ~= t1 and leftover ~= t2 then
+    if leftover ~= -1 and leftover ~= first_buffer and leftover ~= second_buffer then
       vim.api.nvim_buf_delete(leftover, { force = true })
     end
   end
-  if t1 ~= -1 then
-    vim.api.nvim_buf_set_name(t1, "term://Terminal-Temporary")
-    delete_leftover(n1)
+  if first_buffer ~= -1 then
+    vim.api.nvim_buf_set_name(first_buffer, "term://Terminal-Temporary")
+    delete_leftover(first_name)
   end
-  if t2 ~= -1 then
-    vim.api.nvim_buf_set_name(t2, n1)
-    delete_leftover(n2)
+  if second_buffer ~= -1 then
+    vim.api.nvim_buf_set_name(second_buffer, first_name)
+    delete_leftover(second_name)
   end
-  if t1 ~= -1 then
-    vim.api.nvim_buf_set_name(t1, n2)
+  if first_buffer ~= -1 then
+    vim.api.nvim_buf_set_name(first_buffer, second_name)
     delete_leftover("term://Terminal-Temporary")
   end
   M.activate_terminal({ id = second, toggle = false })
