@@ -268,13 +268,30 @@ function M.resolve_active_layout()
   return config.width, config.height, config.row, config.col
 end
 
+---Terminal slot shown in the terminal window, or nil when the window is
+---closed or showing a buffer that is not a plugin terminal.
+---@return integer|nil
+function M.shown_terminal_slot()
+  if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
+    return nil
+  end
+  local name = vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(M.terminal_window))
+  return tonumber(name:match("^term://Terminal%-(%d+)"))
+end
+
+---Slot navigation and relayout operate on: the slot the terminal window
+---shows, falling back to the last activated slot.
+---@return integer
+function M.active_terminal_slot()
+  return M.shown_terminal_slot() or M.last_terminal
+end
+
 local function relayout_current_terminal()
   if M.terminal_window == nil or not vim.api.nvim_win_is_valid(M.terminal_window) then
     return
   end
   local buffer = vim.api.nvim_win_get_buf(M.terminal_window)
-  local bufname = vim.api.nvim_buf_get_name(buffer)
-  local id = tonumber(bufname:gsub("^term://Terminal%-", ""), 10) or M.last_terminal
+  local id = M.active_terminal_slot()
   local append_mode = M.terminal_state[buffer] == true
   M.activate_terminal({
     id = id,
@@ -911,7 +928,7 @@ end
 ---@param direction 1|-1
 function M.navigate(direction)
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    local next_terminal = (tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10) + direction + 10) % 10
+    local next_terminal = (M.active_terminal_slot() + direction + 10) % 10
     M.activate_terminal({ id = next_terminal })
   elseif direction == 1 then
     vim.cmd.tabnext()
@@ -965,7 +982,7 @@ end
 ---@param direction 1|-1
 function M.move_terminal(direction)
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    local current = tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10)
+    local current = M.active_terminal_slot()
     local other = (current + direction + 10) % 10
     M.swap_terminals(current, other)
   elseif direction == 1 then
@@ -1099,7 +1116,7 @@ function M.activate_terminal(opts)
   M.last_terminal = id
   if opts["id"] ~= nil then
     if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-      local current = tonumber(vim.fn.bufname():gsub("^term://Terminal%-", ""), 10)
+      local current = M.shown_terminal_slot()
       if current == id and toggle then
         M.toggle_terminal()
         return
