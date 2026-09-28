@@ -122,6 +122,23 @@ local function choose_tab_padding(available_width)
   return padding
 end
 
+---Maps every character index of a full, untruncated tab header to the tab
+---whose cell contains it. Index 0 is the leading border character and has no
+---entry.
+---@param tab_padding integer
+---@return table<integer, integer>
+local function build_tab_hit_map(tab_padding)
+  local cell_width = tab_padding * 2 + 4
+  local tab_id_by_char = {}
+  for cell = 0, 9 do
+    local first_index = 1 + cell * cell_width
+    for offset = 0, cell_width - 1 do
+      tab_id_by_char[first_index + offset] = (cell + 1) % 10
+    end
+  end
+  return tab_id_by_char
+end
+
 ---@param id integer primary bracketed tab id
 ---@param tab_padding integer
 ---@param extra_bracket integer|table|nil additional bracketed tab id(s) shown during drag
@@ -166,29 +183,41 @@ local function build_tab_headers(id, tab_padding, extra_bracket)
   return header1, header2, header3
 end
 
+---Truncates the tab-bar rows for narrow windows, transforming the hit map
+---with the same cut so positions keep resolving to their tabs.
 ---@param header1 string
 ---@param header2 string
 ---@param header3 string
 ---@param available_width number
 ---@param id integer
 ---@param margin boolean
----@return string, string, string
-local function truncate_tab_headers(header1, header2, header3, available_width, id, margin)
+---@param tab_id_by_char table<integer, integer> hit map of the untruncated header2
+---@return string, string, string, table
+local function truncate_tab_headers(header1, header2, header3, available_width, id, margin, tab_id_by_char)
   if vim.fn.strcharlen(header1) <= available_width then
-    return header1, header2, header3
+    return header1, header2, header3, tab_id_by_char
   end
   local margin_trim = margin and 4 or 0
+  local truncated = {}
   if id <= 5 and id ~= 0 then
-    header1 = vim.fn.strcharpart(header1, 0, available_width - 1 - margin_trim) .. "─"
-    header2 = vim.fn.strcharpart(header2, 0, available_width - 1 - margin_trim) .. " "
-    header3 = vim.fn.strcharpart(header3, 0, available_width - 1 - margin_trim) .. "─"
+    local keep = available_width - 1 - margin_trim
+    header1 = vim.fn.strcharpart(header1, 0, keep) .. "─"
+    header2 = vim.fn.strcharpart(header2, 0, keep) .. " "
+    header3 = vim.fn.strcharpart(header3, 0, keep) .. "─"
+    for index = 0, keep - 1 do
+      truncated[index] = tab_id_by_char[index]
+    end
   else
     local length = vim.fn.strcharlen(header1)
-    header1 = "─" .. vim.fn.strcharpart(header1, length - available_width + 1 + margin_trim, length)
-    header2 = " " .. vim.fn.strcharpart(header2, length - available_width + 1 + margin_trim, length)
-    header3 = "─" .. vim.fn.strcharpart(header3, length - available_width + 1 + margin_trim, length)
+    local start = length - available_width + 1 + margin_trim
+    header1 = "─" .. vim.fn.strcharpart(header1, start, length)
+    header2 = " " .. vim.fn.strcharpart(header2, start, length)
+    header3 = "─" .. vim.fn.strcharpart(header3, start, length)
+    for index = start, length - 1 do
+      truncated[index - start + 1] = tab_id_by_char[index]
+    end
   end
-  return header1, header2, header3
+  return header1, header2, header3, truncated
 end
 
 ---@param layout table layout returned by compute_window_layout
@@ -251,7 +280,9 @@ local function drag_preview_header2(layout, source_id, dest_id)
       header1, full_header2, header3 = build_tab_headers(source_id, tab_padding, dest_id)
     end
   end
-  _, full_header2, _ = truncate_tab_headers(header1, full_header2, header3, available_width, source_id, layout.margin)
+  local preview_hit_map = build_tab_hit_map(layout.tab_padding)
+  _, full_header2, _ =
+    truncate_tab_headers(header1, full_header2, header3, available_width, source_id, layout.margin, preview_hit_map)
   return full_header2
 end
 
@@ -311,12 +342,28 @@ function M.cycle_layout()
   relayout_current_terminal()
 end
 
+---@class TerminalLayout
+---@field width integer
+---@field height integer
+---@field row integer
+---@field col integer
+---@field margin boolean
+---@field tab_padding integer
+---@field terminal_height integer
+---@field header1 string
+---@field header2 string
+---@field header3 string
+---@field tab_bar_width integer
+---@field header_left_pad integer
+---@field header_right_pad integer
+---@field tab_id_by_char table<integer, integer> tab id (0-9) at each 0-indexed character of header2
+
 ---@param width_config number|string|nil
 ---@param height_config number|string|nil
 ---@param row_config number|string|nil
 ---@param col_config number|string|nil
 ---@param id integer
----@return table
+---@return TerminalLayout
 function M.compute_window_layout(width_config, height_config, row_config, col_config, id)
   local margin = vim.o.columns > 102
   local width = resolve_dimension(width_config, vim.o.columns, M.default_width)
@@ -337,7 +384,9 @@ function M.compute_window_layout(width_config, height_config, row_config, col_co
   local available_tab_width = width - (margin and 2 or 0)
   local tab_padding = choose_tab_padding(available_tab_width)
   local header1, header2, header3 = build_tab_headers(id, tab_padding)
-  header1, header2, header3 = truncate_tab_headers(header1, header2, header3, available_tab_width, id, margin)
+  local tab_id_by_char = build_tab_hit_map(tab_padding)
+  header1, header2, header3, tab_id_by_char =
+    truncate_tab_headers(header1, header2, header3, available_tab_width, id, margin, tab_id_by_char)
 
   local header_length = vim.fn.strcharlen(header1)
   local total_header_pad = width - (margin and 2 or 0) - header_length
@@ -358,54 +407,20 @@ function M.compute_window_layout(width_config, height_config, row_config, col_co
     tab_bar_width = tab_bar_width(tab_padding),
     header_left_pad = header_left_pad,
     header_right_pad = header_right_pad,
+    tab_id_by_char = tab_id_by_char,
   }
 end
 
----@param header2 string truncated tab header line
----@param tab_padding integer per-tab padding used to build the header
+---Tab id (0-9) at a 0-indexed character position of the rendered tab bar,
+---or nil when the position is not on a tab.
+---@param layout TerminalLayout layout returned by compute_window_layout
 ---@param relative_index integer 0-indexed character index within header2
 ---@return integer|nil tab id (0-9) or nil when the index is not on a tab
-function M.tab_id_at_header_index(header2, tab_padding, relative_index)
-  if type(header2) ~= "string" then
+function M.tab_id_at_header_index(layout, relative_index)
+  if layout == nil or type(relative_index) ~= "number" or type(layout.tab_id_by_char) ~= "table" then
     return nil
   end
-  if type(tab_padding) ~= "number" or type(relative_index) ~= "number" then
-    return nil
-  end
-  local cell_width = tab_padding * 2 + 4
-  local full_width = 1 + 10 * cell_width
-  local truncated_length = vim.fn.strcharlen(header2)
-  if relative_index < 0 or relative_index >= truncated_length then
-    return nil
-  end
-  local is_truncated = truncated_length < full_width
-  local starts_with_border = vim.fn.strcharpart(header2, 0, 1) == "┤"
-  local start_index = 0
-  if is_truncated and not starts_with_border then
-    start_index = full_width - truncated_length + 1
-  end
-  if start_index > 0 and relative_index == 0 then
-    return nil
-  end
-  if start_index == 0 and is_truncated and relative_index == truncated_length - 1 then
-    if vim.fn.strcharpart(header2, truncated_length - 1, 1) == " " then
-      return nil
-    end
-  end
-  local original_index
-  if start_index == 0 then
-    original_index = relative_index
-  else
-    original_index = start_index + relative_index - 1
-  end
-  if original_index <= 0 or original_index >= full_width then
-    return nil
-  end
-  local cell = math.floor((original_index - 1) / cell_width)
-  if cell < 0 or cell > 9 then
-    return nil
-  end
-  return (cell + 1) % 10
+  return layout.tab_id_by_char[relative_index]
 end
 
 ---@param click_line integer 1-indexed buffer line in the border window
@@ -422,15 +437,9 @@ function M.tab_id_for_border_click(click_line, click_wincol, layout)
   if layout == nil then
     return nil
   end
-  local header2 = layout.header2
-  local tab_padding = layout.tab_padding
-  local left_pad = layout.header_left_pad
-  if type(header2) ~= "string" or type(tab_padding) ~= "number" or type(left_pad) ~= "number" then
-    return nil
-  end
-  local header_start = left_pad + (layout.margin and 1 or 0)
+  local header_start = layout.header_left_pad + (layout.margin and 1 or 0)
   local relative_index = (click_wincol - 1) - header_start
-  return M.tab_id_at_header_index(header2, tab_padding, relative_index)
+  return M.tab_id_at_header_index(layout, relative_index)
 end
 
 function M.handle_tab_click()
@@ -574,26 +583,25 @@ function M.border_tab_under_mouse()
   return M.tab_id_for_border_click(mouse.line, mouse.wincol, layout)
 end
 
----@param header2 string truncated tab header line
----@param tab_padding integer per-tab padding used to build the header
+---@param layout TerminalLayout layout returned by compute_window_layout
 ---@param relative_index integer 0-indexed character index within header2
 ---@return integer|nil nearest visible tab id, clamping out-of-range positions to the edge tabs
-local function nearest_tab_at_header_index(header2, tab_padding, relative_index)
-  local exact = M.tab_id_at_header_index(header2, tab_padding, relative_index)
+local function nearest_tab_at_header_index(layout, relative_index)
+  local exact = M.tab_id_at_header_index(layout, relative_index)
   if exact ~= nil then
     return exact
   end
-  local length = vim.fn.strcharlen(header2)
+  local length = vim.fn.strcharlen(layout.header2)
   if relative_index < length / 2 then
     for index = 0, length - 1 do
-      local id = M.tab_id_at_header_index(header2, tab_padding, index)
+      local id = M.tab_id_at_header_index(layout, index)
       if id ~= nil then
         return id
       end
     end
   else
     for index = length - 1, 0, -1 do
-      local id = M.tab_id_at_header_index(header2, tab_padding, index)
+      local id = M.tab_id_at_header_index(layout, index)
       if id ~= nil then
         return id
       end
@@ -626,33 +634,27 @@ function M.drag_tab_under_mouse()
     return M.border_tab_under_mouse()
   end
   local header2 = layout.header2
-  local tab_padding = layout.tab_padding
   local left_pad = layout.header_left_pad
-  if type(header2) ~= "string" or type(tab_padding) ~= "number" or type(left_pad) ~= "number" then
+  if type(header2) ~= "string" or type(left_pad) ~= "number" then
     return nil
   end
   local header_start = left_pad + (layout.margin and 1 or 0)
   local relative_index = (mouse.screencol - 1) - position[2] - header_start
-  return nearest_tab_at_header_index(header2, tab_padding, relative_index)
+  return nearest_tab_at_header_index(layout, relative_index)
 end
 
----@param layout table layout returned by compute_window_layout
+---@param layout TerminalLayout layout returned by compute_window_layout
 ---@param tab_id integer tab id (0-9)
 ---@return integer|nil start 0-indexed inclusive character index in header2, integer|nil end_exclusive character index
 function M._tab_cell_char_range(layout, tab_id)
   if layout == nil or type(tab_id) ~= "number" then
     return nil
   end
-  local header2 = layout.header2
-  local tab_padding = layout.tab_padding
-  if type(header2) ~= "string" or type(tab_padding) ~= "number" then
-    return nil
-  end
-  local length = vim.fn.strcharlen(header2)
+  local length = vim.fn.strcharlen(layout.header2)
   local first = nil
   local last = nil
   for index = 0, length - 1 do
-    if M.tab_id_at_header_index(header2, tab_padding, index) == tab_id then
+    if M.tab_id_at_header_index(layout, index) == tab_id then
       if first == nil then
         first = index
       end

@@ -143,7 +143,7 @@ describe("tab drag", function()
         assert.is_not_nil(first)
         assert.is_not_nil(last)
         local middle = math.floor((first + last - 1) / 2)
-        assert.equals(id, logic.tab_id_at_header_index(layout.header2, layout.tab_padding, middle))
+        assert.equals(id, logic.tab_id_at_header_index(layout, middle))
       end
       assert.is_nil(logic._tab_cell_char_range(layout, nil))
       assert.is_nil(logic._tab_cell_char_range(nil, 1))

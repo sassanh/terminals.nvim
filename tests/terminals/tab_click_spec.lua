@@ -39,11 +39,11 @@ describe("tab click", function()
       for cell = 0, 9 do
         local expected = (cell + 1) % 10
         local digit_index = 1 + cell * cell_width + layout.tab_padding + 1
-        assert.equals(expected, logic.tab_id_at_header_index(layout.header2, layout.tab_padding, digit_index))
+        assert.equals(expected, logic.tab_id_at_header_index(layout, digit_index))
         local left_edge = 1 + cell * cell_width
-        assert.equals(expected, logic.tab_id_at_header_index(layout.header2, layout.tab_padding, left_edge))
+        assert.equals(expected, logic.tab_id_at_header_index(layout, left_edge))
         local separator = 1 + (cell + 1) * cell_width - 1
-        assert.equals(expected, logic.tab_id_at_header_index(layout.header2, layout.tab_padding, separator))
+        assert.equals(expected, logic.tab_id_at_header_index(layout, separator))
       end
     end)
 
@@ -51,9 +51,9 @@ describe("tab click", function()
       vim.o.columns = 200
       vim.o.lines = 40
       local layout = logic.compute_window_layout(nil, nil, nil, nil, 1)
-      assert.is_nil(logic.tab_id_at_header_index(layout.header2, layout.tab_padding, 0))
-      assert.is_nil(logic.tab_id_at_header_index(layout.header2, layout.tab_padding, -1))
-      assert.is_nil(logic.tab_id_at_header_index(layout.header2, layout.tab_padding, vim.fn.strcharlen(layout.header2)))
+      assert.is_nil(logic.tab_id_at_header_index(layout, 0))
+      assert.is_nil(logic.tab_id_at_header_index(layout, -1))
+      assert.is_nil(logic.tab_id_at_header_index(layout, vim.fn.strcharlen(layout.header2)))
     end)
 
     it("maps visible tabs in a left-truncated header", function()
@@ -65,10 +65,10 @@ describe("tab click", function()
       for index = 0, length - 1 do
         local char = vim.fn.strcharpart(layout.header2, index, 1)
         if char:match("%d") then
-          assert.equals(tonumber(char), logic.tab_id_at_header_index(layout.header2, layout.tab_padding, index))
+          assert.equals(tonumber(char), logic.tab_id_at_header_index(layout, index))
         end
       end
-      assert.is_nil(logic.tab_id_at_header_index(layout.header2, layout.tab_padding, length - 1))
+      assert.is_nil(logic.tab_id_at_header_index(layout, length - 1))
     end)
 
     it("maps visible tabs in a right-truncated header", function()
@@ -80,10 +80,10 @@ describe("tab click", function()
       for index = 0, length - 1 do
         local char = vim.fn.strcharpart(layout.header2, index, 1)
         if char:match("%d") then
-          assert.equals(tonumber(char), logic.tab_id_at_header_index(layout.header2, layout.tab_padding, index))
+          assert.equals(tonumber(char), logic.tab_id_at_header_index(layout, index))
         end
       end
-      assert.is_nil(logic.tab_id_at_header_index(layout.header2, layout.tab_padding, 0))
+      assert.is_nil(logic.tab_id_at_header_index(layout, 0))
     end)
   end)
 
