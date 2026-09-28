@@ -1099,10 +1099,22 @@ function M.leave_terminal()
   end, { buffer = true, silent = true, expr = true })
 end
 
---- @param opts ActivateTerminalOptions|nil
-function M.activate_terminal(opts)
-  M._save_current_terminal_state()
-  opts = opts or {}
+---Runs an operation while window-leave events are treated as terminal
+---switches rather than closes, releasing the guard even when the operation
+---fails.
+---@param operation function
+local function during_terminal_switch(operation)
+  M.switching_terminals = true
+  local ok, err = xpcall(operation, debug.traceback)
+  M.switching_terminals = false
+  if not ok then
+    error(err, 0)
+  end
+end
+
+---Creates or reconfigures the terminal windows for the requested slot.
+---@param opts ActivateTerminalOptions
+local function activate_terminal_impl(opts)
   local id = 1
   local toggle = opts["toggle"] == nil or opts["toggle"]
   local append_mode = opts["append_mode"] == nil or opts["append_mode"]
@@ -1150,8 +1162,6 @@ function M.activate_terminal(opts)
       vim.api.nvim_buf_delete(bufnr, { force = true })
     end
   end
-
-  M.switching_terminals = true
 
   local win_opts = {
     relative = "editor",
@@ -1251,22 +1261,28 @@ function M.activate_terminal(opts)
       M.toggle_terminal()
     end
   end
+end
 
-  M.switching_terminals = false
+--- @param opts ActivateTerminalOptions|nil
+function M.activate_terminal(opts)
+  M._save_current_terminal_state()
+  during_terminal_switch(function()
+    activate_terminal_impl(opts or {})
+  end)
 end
 
 function M.close_terminal()
-  M.switching_terminals = true
-  M._mouse_press_tab_id = nil
-  M._drag_preview = nil
-  M._clear_swap_flash()
-  if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
-    vim.api.nvim_win_close(M.terminal_window, false)
-  end
-  if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
-    vim.api.nvim_win_close(M.border_window, false)
-  end
-  M.switching_terminals = false
+  during_terminal_switch(function()
+    M._mouse_press_tab_id = nil
+    M._drag_preview = nil
+    M._clear_swap_flash()
+    if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
+      vim.api.nvim_win_close(M.terminal_window, false)
+    end
+    if M.border_window ~= nil and vim.api.nvim_win_is_valid(M.border_window) then
+      vim.api.nvim_win_close(M.border_window, false)
+    end
+  end)
 end
 
 function M.toggle_terminal(append_mode)
