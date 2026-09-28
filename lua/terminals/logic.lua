@@ -442,19 +442,6 @@ function M.tab_id_for_border_click(click_line, click_wincol, layout)
   return M.tab_id_at_header_index(layout, relative_index)
 end
 
-function M.handle_tab_click()
-  local id = M.border_tab_under_mouse()
-  if id == nil then
-    return false
-  end
-  M.activate_terminal({ id = id, toggle = false })
-  return true
-end
-
-function M.handle_mouse_click()
-  return M.handle_tab_click()
-end
-
 ---@return string keycode to feed: "" to swallow, otherwise the original key for native handling.
 ---Expr-safe: never changes buffers or windows synchronously (E565).
 ---Tab-bar work is deferred with vim.schedule so fast scrolls and clicks
@@ -913,20 +900,6 @@ function M._handle_scroll(wheel_action, direction)
   return ""
 end
 
-function M.on_win_enter()
-  if M.switching_terminals then
-    return
-  end
-  if M.border_window == nil or not vim.api.nvim_win_is_valid(M.border_window) then
-    return
-  end
-  local ok, current_window = pcall(vim.api.nvim_get_current_win)
-  if not ok or current_window ~= M.border_window then
-    return
-  end
-  M.handle_tab_click()
-end
-
 ---@param direction 1|-1
 function M.navigate(direction)
   if M.terminal_window ~= nil and vim.api.nvim_win_is_valid(M.terminal_window) then
@@ -1383,11 +1356,6 @@ function M.terminal_window_closed(name)
       end
     end
   end
-end
-
----@param state boolean
-function M.save_terminal_state(state)
-  M.terminal_state[vim.fn.bufnr()] = state
 end
 
 function M.handle_resize()
