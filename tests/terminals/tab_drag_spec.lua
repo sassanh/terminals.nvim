@@ -399,9 +399,14 @@ describe("tab drag", function()
       local namespace = vim.api.nvim_create_namespace("terminals_tab_swap")
       local marks = vim.api.nvim_buf_get_extmarks(buffer, namespace, 0, -1, { details = true })
       assert.equals(2, #marks)
+      local lengths = {}
       for _, mark in ipairs(marks) do
         assert.equals("TerminalsTabDragDest", mark[4].hl_group)
+        table.insert(lengths, mark[4].end_col - mark[3])
       end
+      -- the active cell draws "[7]" and the inactive one only "2"; both flash
+      -- at the longest label so the pair renders at one width
+      assert.same({ 3, 3 }, lengths)
       assert.is_not_nil(layout)
     end)
 

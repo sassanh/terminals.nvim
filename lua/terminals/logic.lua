@@ -669,15 +669,22 @@ local function ensure_drag_highlights()
   vim.api.nvim_set_hl(0, "TerminalsTabDragDest", { link = "Search", default = true })
 end
 
+---@class TabCellRanges
+---@field area_start integer first character of the cell's label area in header2
+---@field area_end integer end-exclusive character of the cell's label area in header2
+---@field text_start integer first character of the label text
+---@field text_end integer end-exclusive character of the label text
+
+---Character ranges of one tab cell: its label area (the cell bounded by its
+---border separators) and its label text (the area trimmed of padding spaces).
 ---@param buffer integer border buffer id
 ---@param layout table layout returned by compute_window_layout
 ---@param tab_id integer tab id (0-9)
----@param highlight string highlight group name
----@param namespace integer namespace id for the extmark
-local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace)
+---@return TabCellRanges|nil ranges nil when the cell holds no label text
+local function tab_cell_ranges(buffer, layout, tab_id)
   local start_char, end_char = M._tab_cell_char_range(layout, tab_id)
   if start_char == nil or end_char == nil then
-    return
+    return nil
   end
   local header2 = layout.header2
   if type(header2) == "string" then
@@ -690,16 +697,18 @@ local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace)
     end
   end
   if end_char <= start_char then
-    return
+    return nil
   end
+  local area_start = start_char
+  local area_end = end_char
   local header_offset = layout.header_left_pad + (layout.margin and 1 or 0)
   local ok, lines = pcall(vim.api.nvim_buf_get_lines, buffer, 1, 2, false)
   if not ok or type(lines) ~= "table" then
-    return
+    return nil
   end
   local line = lines[1]
   if type(line) ~= "string" then
-    return
+    return nil
   end
   local cell_text = vim.fn.strcharpart(line, header_offset + start_char, end_char - start_char)
   if type(cell_text) == "string" then
@@ -715,12 +724,66 @@ local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace)
       end
     end
     if first_text == nil or last_text == nil then
-      return
+      return nil
     end
     start_char = start_char + first_text
     end_char = start_char + (last_text - first_text + 1)
   end
   if end_char <= start_char then
+    return nil
+  end
+  return {
+    area_start = area_start,
+    area_end = area_end,
+    text_start = start_char,
+    text_end = end_char,
+  }
+end
+
+---Longest label text among two cells, so a pair of cells can flash at one
+---shared width.
+---@param buffer integer border buffer id
+---@param layout table layout returned by compute_window_layout
+---@param first integer tab id (0-9)
+---@param second integer tab id (0-9)
+---@return integer|nil length nil when either cell holds no label text
+local function longest_label_length(buffer, layout, first, second)
+  local first_ranges = tab_cell_ranges(buffer, layout, first)
+  local second_ranges = tab_cell_ranges(buffer, layout, second)
+  if first_ranges == nil or second_ranges == nil then
+    return nil
+  end
+  return math.max(first_ranges.text_end - first_ranges.text_start, second_ranges.text_end - second_ranges.text_start)
+end
+
+---@param buffer integer border buffer id
+---@param layout table layout returned by compute_window_layout
+---@param tab_id integer tab id (0-9)
+---@param highlight string highlight group name
+---@param namespace integer namespace id for the extmark
+---@param target_length integer|nil grow the highlight to this label text length, centered and
+---clamped to the label area, so both cells of a pair render at the same width
+local function highlight_tab_cell(buffer, layout, tab_id, highlight, namespace, target_length)
+  local ranges = tab_cell_ranges(buffer, layout, tab_id)
+  if ranges == nil then
+    return
+  end
+  local start_char = ranges.text_start
+  local end_char = ranges.text_end
+  if target_length ~= nil and target_length > end_char - start_char then
+    local missing = target_length - (end_char - start_char)
+    local grow_left = math.min(math.floor(missing / 2), start_char - ranges.area_start)
+    local grow_right = math.min(missing - grow_left, ranges.area_end - end_char)
+    start_char = start_char - grow_left
+    end_char = end_char + grow_right
+  end
+  local header_offset = layout.header_left_pad + (layout.margin and 1 or 0)
+  local ok, lines = pcall(vim.api.nvim_buf_get_lines, buffer, 1, 2, false)
+  if not ok or type(lines) ~= "table" then
+    return
+  end
+  local line = lines[1]
+  if type(line) ~= "string" then
     return
   end
   local start_byte = vim.fn.byteidx(line, header_offset + start_char)
@@ -769,8 +832,9 @@ function M._flash_swap_tabs(first, second, duration_ms)
   end
   M._clear_swap_flash()
   ensure_drag_highlights()
-  highlight_tab_cell(buffer, layout, first, "TerminalsTabDragDest", SWAP_FLASH_NS)
-  highlight_tab_cell(buffer, layout, second, "TerminalsTabDragDest", SWAP_FLASH_NS)
+  local target_length = longest_label_length(buffer, layout, first, second)
+  highlight_tab_cell(buffer, layout, first, "TerminalsTabDragDest", SWAP_FLASH_NS, target_length)
+  highlight_tab_cell(buffer, layout, second, "TerminalsTabDragDest", SWAP_FLASH_NS, target_length)
   local timeout = duration_ms or SWAP_FLASH_MS
   local timer = vim.defer_fn(function()
     swap_flash_timer = nil
